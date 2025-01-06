@@ -1,0 +1,9 @@
+portable_config/d3dcompiler_43.dll
+portable_config/doc/
+portable_config/7z/
+# portable_config/installer/
+# ?? portable_config/mpv.com
+portable_config/mpv.exe
+# ?? portable_config/mpv/
+# ?? portable_config/settings.xml
+# ?? portable_config/updater.bat
