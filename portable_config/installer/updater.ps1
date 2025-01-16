@@ -17,15 +17,13 @@ function Get-7z {
 }
 
 function Check-7z {
-    if (-not (Get-7z))
-    {
+    if (-not (Get-7z)) {
         $null = New-Item -ItemType Directory -Force (Split-Path $fallback7z)
         $download_file = $fallback7z
         Write-Host "Downloading 7zr.exe" -ForegroundColor Green
         Invoke-WebRequest -Uri "https://www.7-zip.org/a/7zr.exe" -UserAgent $useragent -OutFile $download_file
     }
-    else
-    {
+    else {
         Write-Host "7z already exist. Skipped download" -ForegroundColor Green
     }
 }
@@ -33,8 +31,7 @@ function Check-7z {
 function Check-PowershellVersion {
     $version = $PSVersionTable.PSVersion.Major
     Write-Host "Checking Windows PowerShell version -- $version" -ForegroundColor Green
-    if ($version -le 2)
-    {
+    if ($version -le 2) {
         Write-Host "Using Windows PowerShell $version is unsupported. Upgrade your Windows PowerShell." -ForegroundColor Red
         throw
     }
@@ -83,12 +80,12 @@ function Download-Ytplugin ($plugin, $version) {
             if (-Not (Test-Path (Join-Path $env:windir "SysWow64"))) {
                 $32bit = "_x86"
             }
-            $link = -join("https://github.com/yt-dlp/yt-dlp/releases/download/", $version, "/", $plugin, $32bit, ".exe")
-            $plugin_exe = -join($plugin, $32bit, ".exe")
+            $link = -join ("https://github.com/yt-dlp/yt-dlp/releases/download/", $version, "/", $plugin, $32bit, ".exe")
+            $plugin_exe = -join ($plugin, $32bit, ".exe")
         }
         "youtube-dl" {
             Write-Host "Downloading $plugin ($version)" -ForegroundColor Green
-            $link = -join("https://yt-dl.org/downloads/", $version, "/youtube-dl.exe")
+            $link = -join ("https://yt-dl.org/downloads/", $version, "/youtube-dl.exe")
             $plugin_exe = "youtube-dl.exe"
         }
     }
@@ -116,9 +113,8 @@ function Get-Latest-Mpv($Arch, $channel) {
             $x86_64_link = "https://sourceforge.net/projects/mpv-player-windows/rss?path=/64bit"
             $x86_64v3_link = "https://sourceforge.net/projects/mpv-player-windows/rss?path=/64bit-v3"
             $rss_link = ''
-            switch ($Arch)
-            {
-                i686 { $rss_link = $i686_link}
+            switch ($Arch) {
+                i686 { $rss_link = $i686_link }
                 x86_64 { $rss_link = $x86_64_link }
                 x86_64-v3 { $rss_link = $x86_64v3_link }
             }
@@ -189,9 +185,8 @@ function Get-Arch {
     $result = "" | select FilePath, FileType
     $result.FilePath = $FilePath
 
-    switch ($machineUint)
-    {
-        0      { $result.FileType = 'Native' }
+    switch ($machineUint) {
+        0 { $result.FileType = 'Native' }
         0x014c { $result.FileType = 'i686' } # 32bit
         0x0200 { $result.FileType = 'Itanium' }
         0x8664 { $result.FileType = 'x86_64' } # 64bit
@@ -228,14 +223,13 @@ function ExtractDateFromURL($filename) {
     return $matches[1]
 }
 
-function Test-Admin
-{
+function Test-Admin {
     $user = [Security.Principal.WindowsIdentity]::GetCurrent();
     (New-Object Security.Principal.WindowsPrincipal $user).IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
 }
 
 function Create-XML {
-@"
+    @"
 <settings>
   <channel>unset</channel>
   <arch>unset</arch>
@@ -327,8 +321,7 @@ function Check-Autodelete($archive) {
         $doc.Save($file)
     }
     if ($doc.settings.autodelete -eq "true") {
-        if (Test-Path $archive)
-        {
+        if (Test-Path $archive) {
             Remove-Item -Force $archive
         }
     }
@@ -378,10 +371,8 @@ function Upgrade-Mpv {
         $localdate = ExtractDateFromFile
         $remotegit = ExtractGitFromURL $remoteName
         $remotedate = ExtractDateFromURL $remoteName
-        if ($localgit -match $remotegit)
-        {
-            if ($localdate -match $remotedate)
-            {
+        if ($localgit -match $remotegit) {
+            if ($localdate -match $remotedate) {
                 Write-Host "You are already using latest mpv build -- $remoteName" -ForegroundColor Green
                 $need_download = $false
             }
@@ -494,7 +485,7 @@ function Upgrade-FFmpeg {
         $file_pattern_2 = "N-\d+-g(?<commit>[a-z0-9]+)"                         # N-109751-g9a820ec8b
         $file_pattern = $file_pattern_1, $file_pattern_2 -join '|'
         $url_pattern = "git-([a-z0-9]+)"
-        $file_match= [Regex]::Matches($ffmpeg_file, $file_pattern)
+        $file_match = [Regex]::Matches($ffmpeg_file, $file_pattern)
         $remote_match = [Regex]::Matches($remote_name, $url_pattern)
         $local_git = $file_match[0].groups['commit'].value
         $remote_git = $remote_match[0].groups[1].value
@@ -520,7 +511,7 @@ function Upgrade-FFmpeg {
     Check-Autodelete $remote_name
 }
 
-function Read-KeyOrTimeout ($prompt, $key){
+function Read-KeyOrTimeout ($prompt, $key) {
     $seconds = 9
     $startTime = Get-Date
     $timeOut = New-TimeSpan -Seconds $seconds
