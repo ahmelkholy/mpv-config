@@ -7,3 +7,6 @@ portable_config/mpv.exe
 # ?? portable_config/mpv/
 # ?? portable_config/settings.xml
 # ?? portable_config/updater.bat
+
+.vscode/
+.venv/
