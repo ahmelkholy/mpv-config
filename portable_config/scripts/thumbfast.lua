@@ -57,8 +57,7 @@ local options = {
 mp.utils = require "mp.utils"
 mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
-
--- Intelligent Portable Detection:
+-- Intelligent Portable Detection (Auto-Patch):
 if options.mpv_path == "mpv" then
     local candidates = {
         "~~/mpv.exe",

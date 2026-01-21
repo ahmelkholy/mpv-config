@@ -4,7 +4,7 @@
 
 local options = {
     -- File path gets expanded, leave empty for in-memory history
-    history_path = "C:/Users/ahm_e/mpv/portable_config/memo-history.log",
+    history_path = "~~/memo-history.log",
 
     -- How many entries to display in menu
     entries = 10,
@@ -438,7 +438,7 @@ function loadfile_compat(path)
 end
 
 function menu_json(menu_items, page)
-    local title = (search_query or (dir_menu and "Directories" or "History")) .. ""
+    local title = (search_query or (dir_menu and "Directories" or "History")) .. " (memo)"
     if options.pagination or page ~= 1 then
         title = title .. " - Page " .. page
     end
