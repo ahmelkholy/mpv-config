@@ -51,12 +51,30 @@ local options = {
     direct_io = false,
 
     -- Custom path to the mpv executable
-    mpv_path = "mpv"
+    mpv_path = "C:/Users/ahm_e/mpv/portable_config/mpv.exe"
 }
 
 mp.utils = require "mp.utils"
 mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
+
+-- Intelligent Portable Detection:
+if options.mpv_path == "mpv" then
+    local candidates = {
+        "~~/mpv.exe",
+        "~~/mpv.com",
+        "~~/../mpv.exe",
+        "~~/../mpv.com"
+    }
+    for _, path in ipairs(candidates) do
+        local expanded = mp.command_native({"expand-path", path})
+        local info = mp.utils.file_info(expanded)
+        if info and info.is_file then
+            options.mpv_path = expanded:gsub("\\", "/")
+            break
+        end
+    end
+end
 
 local properties = {}
 local pre_0_30_0 = mp.command_native_async == nil
