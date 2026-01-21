@@ -6,19 +6,19 @@ local options = require("mp.options")
 
 local o = {
     configs = "input.conf",
-    prefix = "@",
+    prefix = "event,@",
 }
 
 local bind_map = {}
 
 local event_pattern = {
-    { to = "penta_click", from = "down,up,down,up,down,up,down,up,down,up", length = 10 },
-    { to = "quatra_click", from = "down,up,down,up,down,up,down,up", length = 8 },
-    { to = "triple_click", from = "down,up,down,up,down,up", length = 6 },
-    { to = "double_click", from = "down,up,down,up", length = 4 },
-    { to = "click", from = "down,up", length = 2 },
-    { to = "press", from = "down", length = 1 },
-    { to = "release", from = "up", length = 1 },
+    { to = "penta_click",  from = "down,up,down,up,down,up,down,up,down,up", length = 10 },
+    { to = "quatra_click", from = "down,up,down,up,down,up,down,up",         length = 8 },
+    { to = "triple_click", from = "down,up,down,up,down,up",                 length = 6 },
+    { to = "double_click", from = "down,up,down,up",                         length = 4 },
+    { to = "click",        from = "down,up",                                 length = 2 },
+    { to = "press",        from = "down",                                    length = 1 },
+    { to = "release",      from = "up",                                      length = 1 },
 }
 
 local supported_events = {
@@ -119,7 +119,7 @@ function now()
 end
 
 function command(command)
-    if not command or command == '' then return true end
+    if not command or command == "" then return true end
     return mp.command(command)
 end
 
@@ -176,11 +176,32 @@ function command_invert(command)
             end
         end
 
-        local value = mp.get_property(property)
-        local semi = i == #command_list and "" or ";"
-
         if table.has(commands, command) then
-            invert = invert .. prefix .. "set " .. property .. " " .. value .. semi
+            local restore = true
+            local use_del = false
+            local value = mp.get_property_native(property)
+            local semi = i == #command_list and "" or "; "
+
+            if type(value) == 'number' then
+                value = tostring(value)
+            elseif type(value) == 'boolean' then
+                value = value and 'yes' or 'no'
+            elseif type(value) == 'string' then
+                value = '"' .. value:replace('"', '\\"') .. '"'
+            elseif type(value) == 'nil' then
+                use_del = true
+            else
+                mp.msg.warn("the value type of \"" .. property .. "\" is " .. type(value) .. ", can't auto restore.")
+                restore = false
+            end
+
+            if restore then
+                if not use_del then
+                    invert = invert .. prefix .. "set" .. " " .. property .. " " .. value .. semi
+                else
+                    invert = invert .. prefix .. "del" .. " " .. property .. semi
+                end
+            end
         else
             mp.msg.warn("\"" .. trimed .. "\" doesn't support auto restore.")
         end
@@ -249,9 +270,9 @@ function InputEvent:emit(event)
         return
     end
 
-    local expand = mp.command_native({ 'expand-text', cmd })
+    local expand = mp.command_native({ "expand-text", cmd })
     if #command_split(cmd) == #command_split(expand) then
-        cmd = mp.command_native({ 'expand-text', cmd })
+        cmd = mp.command_native({ "expand-text", cmd })
     else
         mp.msg.warn("Unsafe property-expansion: " .. cmd)
     end
@@ -394,12 +415,14 @@ function bind_from_conf(conf)
                     end
                 end
 
-                local event = comments[o.prefix]
-                if event and event ~= "" and supported_events[event] then
-                    if not kv[key] then
-                        kv[key] = {}
+                for _, prefix in ipairs(o.prefix:split(",")) do
+                    local event = comments[prefix]
+                    if event and event ~= "" and supported_events[event] then
+                        if not kv[key] then
+                            kv[key] = {}
+                        end
+                        kv[key][event] = cmd
                     end
-                    kv[key][event] = cmd
                 end
             end
         end
