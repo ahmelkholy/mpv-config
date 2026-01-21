@@ -1,3 +1,0 @@
-[submodule "modules/mpv-install"]
-	path = modules/mpv-install
-	url = https://github.com/rossy/mpv-install.git
