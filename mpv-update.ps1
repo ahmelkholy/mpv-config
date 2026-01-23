@@ -134,6 +134,65 @@ function Update-Uosc {
         
         Remove-Item $zip_path -Force
         Write-Host "uosc Updated." -ForegroundColor Green
+        
+        Patch-Uosc
+    }
+}
+
+function Patch-Uosc {
+    Write-Host "Re-applying Dual Subtitle customization to uosc..." -ForegroundColor Yellow
+    $menus_file = Join-Path $install_dir "scripts\uosc\lib\menus.lua"
+    
+    if (Test-Path $menus_file) {
+        $content = Get-Content $menus_file -Raw -Encoding UTF8
+        
+        # 1. Add Menu Item
+        $menu_item_code = @"
+		if opts.type == 'sub' then
+			items[#items + 1] = {
+				title = t('Toggle Dual Subtitles'),
+				value = '{toggle_dual}',
+				icon = 'subtitles',
+			}
+		end
+
+"@
+        # Look for the end of the load_command block
+        $anchor_1 = "actions = opts.download_command`r`n					and {{name = 'download', icon = 'language', label = t('Search online')}}`r`n					or nil,`r`n			}`r`n		end"
+        # Normalize line endings for matching
+        $normalized_content = $content -replace "`r`n", "`n"
+        $normalized_anchor_1 = $anchor_1 -replace "`r`n", "`n"
+        
+        # Check if already patched
+        if ($normalized_content -notmatch "Toggle Dual Subtitles") {
+             if ($normalized_content.Contains($normalized_anchor_1)) {
+                $content = $content.Replace($anchor_1, $anchor_1 + "`r`n`r`n" + $menu_item_code)
+                Write-Host "Added Dual Subtitles menu item." -ForegroundColor Green
+             } else {
+                Write-Host "Could not find anchor for menu item. Customization skipped." -ForegroundColor Red
+             }
+        } else {
+             Write-Host "Dual Subtitles menu item already present." -ForegroundColor Green
+        }
+
+        # 2. Add Event Handler
+        $handler_code = "elseif event.value == '{toggle_dual}' then`r`n			mp.command('script-message toggle-dual-sub')"
+        $anchor_2 = "mp.command(event.action == 'download' and opts.download_command or opts.load_command)"
+        
+        if ($content -notmatch "script-message toggle-dual-sub") {
+             if ($content.Contains($anchor_2)) {
+                $content = $content.Replace($anchor_2, $anchor_2 + "`r`n		" + $handler_code)
+                 Write-Host "Added Dual Subtitles event handler." -ForegroundColor Green
+             } else {
+                 Write-Host "Could not find anchor for event handler. Customization skipped." -ForegroundColor Red
+             }
+        } else {
+             Write-Host "Dual Subtitles event handler already present." -ForegroundColor Green
+        }
+        
+        Set-Content -Path $menus_file -Value $content -Encoding UTF8
+    } else {
+        Write-Host "uosc menus.lua not found!" -ForegroundColor Red
     }
 }
 
