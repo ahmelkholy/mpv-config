@@ -1147,3 +1147,4 @@ function open_subtitle_downloader()
 		end
 	)
 end
+
