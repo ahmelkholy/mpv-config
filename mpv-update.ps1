@@ -376,8 +376,9 @@ function Invoke-SponsorBlockUpdateIfPresent {
     Write-Step "Updating installed SponsorBlock script"
     $script = Invoke-ScriptFileUpdate -Repo "po5/mpv_sponsorblock" -RemotePath "sponsorblock.lua" -LocalPath "scripts\sponsorblock.lua"
     Invoke-ScriptFileUpdate -Repo "po5/mpv_sponsorblock" -RemotePath "sponsorblock_shared/main.lua" -LocalPath "scripts\sponsorblock_shared\main.lua" | Out-Null
-    Invoke-ScriptFileUpdate -Repo "po5/mpv_sponsorblock" -RemotePath "sponsorblock_shared/sponsorblock.py" -LocalPath "scripts\sponsorblock_shared\sponsorblock.py" | Out-Null
+    $pythonScript = Invoke-ScriptFileUpdate -Repo "po5/mpv_sponsorblock" -RemotePath "sponsorblock_shared/sponsorblock.py" -LocalPath "scripts\sponsorblock_shared\sponsorblock.py"
     Invoke-SponsorBlockCompatibilityPatch -Path $script
+    Invoke-SponsorBlockPythonCompatibilityPatch -Path $pythonScript
 }
 
 function Invoke-SponsorBlockCompatibilityPatch {
@@ -391,7 +392,8 @@ function Invoke-SponsorBlockCompatibilityPatch {
         'mp.add_key_binding("H", "downvote_segment", function() return vote("0") end)' = 'mp.add_key_binding(nil, "downvote_segment", function() return vote("0") end)'
         "local speed_timer = nil`nlocal fade_timer = nil" = "---@type any`nlocal speed_timer = nil`n---@type any`nlocal fade_timer = nil"
         '        speed_timer:kill()' = '        if speed_timer ~= nil then speed_timer:kill() end'
-        'if not youtube_id or string.len(youtube_id) < 11 or (local_pattern and string.len(youtube_id) ~= 11) then return end' = 'if not youtube_id or string.len(youtube_id) < 11 or (options.local_pattern ~= "" and string.len(youtube_id) ~= 11) then return end'
+        'youtube_id = youtube_id or string.match(video_path, options.local_pattern)' = 'youtube_id = youtube_id or string.match(video_path, options["local_pattern"])'
+        'if not youtube_id or string.len(youtube_id) < 11 or (local_pattern and string.len(youtube_id) ~= 11) then return end' = 'if not youtube_id or string.len(youtube_id) < 11 or (options["local_pattern"] ~= "" and string.len(youtube_id) ~= 11) then return end'
         'local cur_time = os.time(os.date("*t"))' = 'local cur_time = os.time()'
     }
 
@@ -401,6 +403,27 @@ function Invoke-SponsorBlockCompatibilityPatch {
 
     Set-Content -LiteralPath $Path -Value $content -Encoding UTF8
     Write-Ok "patched SponsorBlock compatibility fixes"
+}
+
+function Invoke-SponsorBlockPythonCompatibilityPatch {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $content = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+    if (-not $content.Contains("import urllib.request")) {
+        $content = $content.Replace("import urllib.parse`n", "import urllib.parse`nimport urllib.request`n")
+    }
+
+    $replacements = @{
+        'except (TimeoutError, urllib.error.URLError) as e:' = 'except (TimeoutError, urllib.error.URLError):'
+        '    except:' = '    except Exception:'
+    }
+
+    foreach ($old in $replacements.Keys) {
+        $content = $content.Replace($old, $replacements[$old])
+    }
+
+    Set-Content -LiteralPath $Path -Value $content -Encoding UTF8
+    Write-Ok "patched SponsorBlock Python compatibility fixes"
 }
 
 function Invoke-ConfigFolderRepair {

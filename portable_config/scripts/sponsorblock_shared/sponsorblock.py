@@ -41,7 +41,7 @@ if sys.argv[1] == "ranges" and (not sys.argv[2] or not os.path.isfile(sys.argv[2
             else:
                 times.append(str(segment["segment"][0]) + "," + str(segment["segment"][1]) + "," + segment["UUID"] + "," + segment["category"])
         print(":".join(times))
-    except (TimeoutError, urllib.error.URLError) as e:
+    except (TimeoutError, urllib.error.URLError):
         print("error")
     except urllib.error.HTTPError as e:
         if e.code == 404:
@@ -103,7 +103,7 @@ elif sys.argv[1] == "submit":
         print("success")
     except urllib.error.HTTPError as e:
         print(e.code)
-    except:
+    except Exception:
         print("error")
 elif sys.argv[1] == "stats":
     try:
@@ -111,12 +111,13 @@ elif sys.argv[1] == "stats":
             urllib.request.urlopen(sys.argv[3] + "/api/viewedVideoSponsorTime?UUID=" + sys.argv[5])
         if sys.argv[9]:
             urllib.request.urlopen(sys.argv[3] + "/api/voteOnSponsorTime?UUID=" + sys.argv[5] + "&userID=" + uid + "&type=" + sys.argv[9])
-    except:
+    except Exception:
         pass
 elif sys.argv[1] == "username":
     try:
         data = urllib.parse.urlencode({"userID": uid, "userName": sys.argv[9]}).encode()
         req = urllib.request.Request(sys.argv[3] + "/api/setUsername", data=data)
         urllib.request.urlopen(req)
-    except:
+    except Exception:
         pass
+

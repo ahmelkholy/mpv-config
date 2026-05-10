@@ -405,9 +405,9 @@ function file_loaded()
         youtube_id = youtube_id or string.match(video_path, url) or string.match(video_referer, url)
         if youtube_id then break end
     end
-    youtube_id = youtube_id or string.match(video_path, options.local_pattern)
+    youtube_id = youtube_id or string.match(video_path, options["local_pattern"])
     
-    if not youtube_id or string.len(youtube_id) < 11 or (options.local_pattern ~= "" and string.len(youtube_id) ~= 11) then return end
+    if not youtube_id or string.len(youtube_id) < 11 or (options["local_pattern"] ~= "" and string.len(youtube_id) ~= 11) then return end
     youtube_id = string.sub(youtube_id, 1, 11)
     mp.msg.debug("Found YouTube ID: " .. youtube_id)
     init = true
