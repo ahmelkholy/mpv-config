@@ -12,3 +12,4 @@ portable_config/installer/mpv.exe
 .vscode/
 .venv/
 /portable_config/cache/
+/portable_config/memo-history.log
