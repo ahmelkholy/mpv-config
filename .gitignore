@@ -11,3 +11,4 @@ portable_config/installer/mpv.exe
 
 .vscode/
 .venv/
+/cache/
