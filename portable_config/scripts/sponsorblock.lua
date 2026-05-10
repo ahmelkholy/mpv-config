@@ -103,7 +103,9 @@ local init = false
 local segment = {a = 0, b = 0, progress = 0, first = true}
 local retrying = false
 local last_skip = {uuid = "", dir = nil}
+---@type any
 local speed_timer = nil
+---@type any
 local fade_timer = nil
 local fade_dir = nil
 local volume_before = mp.get_property_number("volume")
@@ -338,7 +340,7 @@ function skip_ads(name, pos)
     end
     if options.fast_forward and options.fast_forward ~= true then
         options.fast_forward = true
-        speed_timer:kill()
+        if speed_timer ~= nil then speed_timer:kill() end
         speed_timer = nil
         mp.set_property("speed", 1)
     end
@@ -405,7 +407,7 @@ function file_loaded()
     end
     youtube_id = youtube_id or string.match(video_path, options.local_pattern)
     
-    if not youtube_id or string.len(youtube_id) < 11 or (local_pattern and string.len(youtube_id) ~= 11) then return end
+    if not youtube_id or string.len(youtube_id) < 11 or (options.local_pattern ~= "" and string.len(youtube_id) ~= 11) then return end
     youtube_id = string.sub(youtube_id, 1, 11)
     mp.msg.debug("Found YouTube ID: " .. youtube_id)
     init = true
@@ -450,7 +452,7 @@ function file_loaded()
 
     if file_exists(database_file) then
         local db_info = utils.file_info(database_file)
-        local cur_time = os.time(os.date("*t"))
+        local cur_time = os.time()
         local upd_interval = parse_update_interval()
         if upd_interval == nil or os.difftime(cur_time, db_info.mtime) < upd_interval then return end
     end
@@ -567,3 +569,4 @@ mp.add_key_binding(nil, "sponsorblock_set_segment", set_segment)
 mp.add_key_binding(nil, "sponsorblock_submit_segment", submit_segment)
 mp.add_key_binding(nil, "sponsorblock_upvote", function() return vote("1") end)
 mp.add_key_binding(nil, "sponsorblock_downvote", function() return vote("0") end)
+

@@ -223,15 +223,6 @@ function create_select_tracklist_type_menu_opener(opts)
 					or nil,
 			}
 		end
-
-		if opts.type == 'sub' then
-			items[#items + 1] = {
-				title = t('Toggle Dual Subtitles'),
-				value = '{toggle_dual}',
-				icon = 'subtitles',
-			}
-		end
-
 		if #items > 0 then
 			items[#items].separator = true
 		end
@@ -321,8 +312,6 @@ function create_select_tracklist_type_menu_opener(opts)
 	local function handle_activate(event)
 		if event.value == '{load}' then
 			mp.command(event.action == 'download' and opts.download_command or opts.load_command)
-		elseif event.value == '{toggle_dual}' then
-			mp.command('script-message toggle-dual-sub')
 		else
 			if snd and (event.action == 'as_secondary' or event.modifiers == 'shift') then
 				local _, snd_track_index = get_props()
@@ -1147,4 +1136,3 @@ function open_subtitle_downloader()
 		end
 	)
 end
-

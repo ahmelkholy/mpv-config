@@ -1,0 +1,190 @@
+[00:16:23.591][info] [#0:C:/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server\main.lua:71]: Lua Lsp startup, root: 	C:/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server
+[00:16:23.592][info] [#0:C:/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server\main.lua:72]: ROOT:	C:/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server
+[00:16:23.592][info] [#0:C:/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server\main.lua:73]: LOGPATH:	c:\Users\ahm_e\mpv\.lua-language-server-log
+[00:16:23.592][info] [#0:C:/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server\main.lua:74]: METAPATH:	C:/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta
+[00:16:23.593][info] [#0:C:/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server\main.lua:75]: VERSION:	3.18.2-dev
+[00:16:23.638][info] [#0:script\language.lua:137]: VSC language: nil
+[00:16:23.638][info] [#0:script\language.lua:138]: LS  language: en-us
+[00:16:23.638][info] [#0:script\client.lua:657]: Client init	{
+  capabilities = {
+    textDocument = {
+      completion = {
+        completionItem = {
+          tagSupport = {
+            valueSet = { 1, 2 }
+          }
+        }
+      }
+    },
+    workspace = {
+      configuration = true
+    }
+  },
+  initializationOptions = {
+    changeConfiguration = true,
+    trustByClient = true,
+    useSemanticByRange = true,
+    viewDocument = true
+  },
+  rootUri = "file:///c%3A/Users/ahm_e/mpv"
+}
+[00:16:23.638][info] [#0:script\language.lua:137]: VSC language: nil
+[00:16:23.638][info] [#0:script\language.lua:138]: LS  language: en-us
+[00:16:23.638][info] [#0:script\workspace\workspace.lua:38]: Workspace init root: 	file:///c%3A/Users/ahm_e/mpv
+[00:16:23.638][info] [#0:script\workspace\workspace.lua:42]: Log path: 	c:/Users/ahm_e/mpv/.lua-language-server-log/file_c%3A_Users_ahm_e_mpv.log
+[00:16:23.672][info] [#0:script\workspace\workspace.lua:48]: Workspace create: 	file:///c%3A/Users/ahm_e/mpv
+[00:16:23.674][info] [#0:script\provider\provider.lua:36]: Load config from specified	c:\Users\ahm_e\mpv\.luarc.json
+[00:16:23.674][info] [#0:script\provider\provider.lua:37]: {
+  ["diagnostics.disable"] = { "cast-local-type", "inject-field", "need-check-nil", "param-type-mismatch", "undefined-doc-param", "undefined-field" },
+  ["diagnostics.globals"] = { "mp", "jit" },
+  ["runtime.version"] = "Lua 5.1",
+  ["workspace.checkThirdParty"] = false
+}
+[00:16:23.674][warn] [#0:script\config\loader.lua:116]: No config?	nil
+[00:16:23.675][info] [#0:script\provider\provider.lua:56]: Load config from .luarc.json/.luarc.jsonc	file:///c%3A/Users/ahm_e/mpv
+[00:16:23.675][info] [#0:script\provider\provider.lua:57]: {
+  ["diagnostics.disable"] = { "cast-local-type", "inject-field", "need-check-nil", "param-type-mismatch", "undefined-doc-param", "undefined-field" },
+  ["diagnostics.globals"] = { "mp", "jit" },
+  ["runtime.version"] = "Lua 5.1",
+  ["workspace.checkThirdParty"] = false
+}
+[00:16:23.675][warn] [#0:script\config\loader.lua:116]: No config?	nil
+[00:16:23.675][info] [#0:script\provider\provider.lua:65]: Load config from client	fallback
+[00:16:23.675][info] [#0:script\provider\provider.lua:66]: nil
+[00:16:23.676][info] [#0:script\provider\provider.lua:36]: Load config from specified	c:\Users\ahm_e\mpv\.luarc.json
+[00:16:23.676][info] [#0:script\provider\provider.lua:37]: {
+  ["diagnostics.disable"] = { "cast-local-type", "inject-field", "need-check-nil", "param-type-mismatch", "undefined-doc-param", "undefined-field" },
+  ["diagnostics.globals"] = { "mp", "jit" },
+  ["runtime.version"] = "Lua 5.1",
+  ["workspace.checkThirdParty"] = false
+}
+[00:16:23.677][info] [#0:script\library.lua:216]: Init builtin library at:	file:///c%3A/Users/ahm_e/mpv
+[00:16:23.727][info] [#0:script\library.lua:216]: Init builtin library at:	nil
+[00:16:23.791][warn] [#0:script\config\loader.lua:116]: No config?	nil
+[00:16:23.791][info] [#0:script\provider\provider.lua:56]: Load config from .luarc.json/.luarc.jsonc	file:///c%3A/Users/ahm_e/mpv
+[00:16:23.791][info] [#0:script\provider\provider.lua:57]: {
+  ["diagnostics.disable"] = { "cast-local-type", "inject-field", "need-check-nil", "param-type-mismatch", "undefined-doc-param", "undefined-field" },
+  ["diagnostics.globals"] = { "mp", "jit" },
+  ["runtime.version"] = "Lua 5.1",
+  ["workspace.checkThirdParty"] = false
+}
+[00:16:23.791][info] [#0:script\workspace\workspace.lua:330]: Preload start:	file:///c%3A/Users/ahm_e/mpv
+[00:16:23.794][info] [#0:script\workspace\workspace.lua:336]: Scan files at:	file:///c%3A/Users/ahm_e/mpv
+[00:16:23.801][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/io.lua
+[00:16:23.801][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/coroutine.lua
+[00:16:23.801][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/string.lua
+[00:16:23.801][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/debug.lua
+[00:16:23.801][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/package.lua
+[00:16:23.801][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/math.lua
+[00:16:23.801][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/os.lua
+[00:16:23.802][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/basic.lua
+[00:16:23.802][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/table.lua
+[00:16:23.802][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/builtin.lua
+[00:16:23.802][info] [#0:script\workspace\workspace.lua:330]: Preload start:	<fallback>
+[00:16:23.803][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/io.lua
+[00:16:23.803][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/coroutine.lua
+[00:16:23.803][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/string.lua
+[00:16:23.803][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/debug.lua
+[00:16:23.804][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/package.lua
+[00:16:23.804][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/math.lua
+[00:16:23.804][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/os.lua
+[00:16:23.804][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/basic.lua
+[00:16:23.804][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/table.lua
+[00:16:23.804][info] [#0:script\workspace\workspace.lua:359]: Scan library at:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/builtin.lua
+[00:16:23.804][warn] [#0:script\config\loader.lua:116]: No config?	nil
+[00:16:23.804][info] [#0:script\provider\provider.lua:65]: Load config from client	fallback
+[00:16:23.804][info] [#0:script\provider\provider.lua:66]: nil
+[00:16:23.804][info] [#0:script\workspace\workspace.lua:385]: Found 52 files at:	file:///c%3A/Users/ahm_e/mpv
+[00:16:23.804][info] [#0:script\workspace\loading.lua:160]: Load files from disk:	file:///c%3A/Users/ahm_e/mpv
+[00:16:23.804][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/builtin.lua , size = 0.302 KB
+[00:16:23.805][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/builtin.lua
+[00:16:23.805][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/table.lua , size = 5.134 KB
+[00:16:23.808][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/table.lua
+[00:16:23.808][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/basic.lua , size = 16.112 KB
+[00:16:23.816][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/basic.lua
+[00:16:23.817][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/os.lua , size = 5.833 KB
+[00:16:23.819][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/os.lua
+[00:16:23.819][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/math.lua , size = 8.296 KB
+[00:16:23.823][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/math.lua
+[00:16:23.823][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/package.lua , size = 2.805 KB
+[00:16:23.825][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/package.lua
+[00:16:23.826][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/debug.lua , size = 6.850 KB
+[00:16:23.830][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/debug.lua
+[00:16:23.830][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/string.lua , size = 6.498 KB
+[00:16:23.835][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/string.lua
+[00:16:23.835][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/coroutine.lua , size = 2.620 KB
+[00:16:23.837][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/coroutine.lua
+[00:16:23.837][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/io.lua , size = 6.511 KB
+[00:16:23.842][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/io.lua
+[00:16:23.842][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/autodeint.lua , size = 5.347 KB
+[00:16:23.847][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/autoload.lua , size = 12.262 KB
+[00:16:23.854][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/autosubsync.lua , size = 3.790 KB
+[00:16:23.856][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/dictionary.lua , size = 4.270 KB
+[00:16:23.858][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/dual-sub.lua , size = 1.741 KB
+[00:16:23.859][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/evafast.lua , size = 10.956 KB
+[00:16:23.864][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/inputevent.lua , size = 13.851 KB
+[00:16:23.877][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/language-learning.lua , size = 5.954 KB
+[00:16:23.882][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/memo.lua , size = 48.161 KB
+[00:16:23.914][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/sponsorblock.lua , size = 20.938 KB
+[00:16:23.926][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/sponsorblock_shared/main.lua , size = 0.067 KB
+[00:16:23.926][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/sub2clip.lua , size = 2.980 KB
+[00:16:23.929][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/thumbfast.lua , size = 32.002 KB
+[00:16:23.950][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/translate-subtitle.lua , size = 3.738 KB
+[00:16:23.953][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/BufferingIndicator.lua , size = 1.649 KB
+[00:16:23.955][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/Button.lua , size = 3.548 KB
+[00:16:23.960][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/Controls.lua , size = 15.713 KB
+[00:16:23.971][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/Curtain.lua , size = 0.992 KB
+[00:16:23.973][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/CycleButton.lua , size = 2.990 KB
+[00:16:23.976][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/Element.lua , size = 9.366 KB
+[00:16:23.983][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/Elements.lua , size = 4.723 KB
+[00:16:23.986][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/ManagedButton.lua , size = 1.154 KB
+[00:16:23.988][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/Menu.lua , size = 64.596 KB
+[00:16:24.033][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/PauseIndicator.lua , size = 2.607 KB
+[00:16:24.035][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/Speed.lua , size = 5.950 KB
+[00:16:24.040][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/Timeline.lua , size = 18.831 KB
+[00:16:24.051][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/TopBar.lua , size = 15.128 KB
+[00:16:24.068][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/Updater.lua , size = 10.261 KB
+[00:16:24.079][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/Volume.lua , size = 10.056 KB
+[00:16:24.092][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/elements/WindowBorder.lua , size = 1.182 KB
+[00:16:24.095][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/lib/ass.lua , size = 11.241 KB
+[00:16:24.109][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/lib/buttons.lua , size = 1.844 KB
+[00:16:24.111][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/lib/char_conv.lua , size = 1.520 KB
+[00:16:24.114][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/lib/cursor.lua , size = 15.569 KB
+[00:16:24.127][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/lib/fzy.lua , size = 7.973 KB
+[00:16:24.133][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/lib/intl.lua , size = 1.562 KB
+[00:16:24.136][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/lib/menus.lua , size = 35.909 KB
+[00:16:24.166][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/lib/std.lua , size = 9.728 KB
+[00:16:24.173][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/lib/text.lua , size = 21.710 KB
+[00:16:24.184][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/lib/utils.lua , size = 33.936 KB
+[00:16:24.207][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/uosc/main.lua , size = 42.279 KB
+[00:16:24.238][info] [#0:script\workspace\loading.lua:100]: Preload file at: file:///c%3A/Users/ahm_e/mpv/portable_config/scripts/youtube-auto.lua , size = 7.309 KB
+[00:16:24.242][info] [#0:script\workspace\loading.lua:172]: Loaded files takes [0.438] sec: file:///c%3A/Users/ahm_e/mpv
+[00:16:24.242][info] [#0:script\workspace\loading.lua:181]: Compile files takes [0.000] sec: file:///c%3A/Users/ahm_e/mpv
+[00:16:24.242][info] [#0:script\workspace\loading.lua:182]: Loaded finish:	file:///c%3A/Users/ahm_e/mpv
+[00:16:24.242][info] [#0:script\workspace\workspace.lua:387]: Preload finish at:	file:///c%3A/Users/ahm_e/mpv
+[00:16:26.753][info] [#0:script\workspace\workspace.lua:385]: Found 10 files at:	<fallback>
+[00:16:26.753][info] [#0:script\workspace\loading.lua:160]: Load files from disk:	<fallback>
+[00:16:26.753][info] [#0:script\workspace\loading.lua:88]: Skip loaded file: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/builtin.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/builtin.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:88]: Skip loaded file: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/table.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/table.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:88]: Skip loaded file: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/basic.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/basic.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:88]: Skip loaded file: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/os.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/os.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:88]: Skip loaded file: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/math.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/math.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:88]: Skip loaded file: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/package.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/package.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:88]: Skip loaded file: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/debug.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/debug.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:88]: Skip loaded file: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/string.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/string.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:88]: Skip loaded file: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/coroutine.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/coroutine.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:88]: Skip loaded file: file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/io.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:112]: ++++As library of:	file:///c%3A/Users/ahm_e/.vscode/extensions/sumneko.lua-3.18.2-win32-x64/server/meta/Lua%205.1%20en-us%20utf8/io.lua
+[00:16:26.753][info] [#0:script\workspace\loading.lua:172]: Loaded files takes [0.001] sec: <fallback>
+[00:16:26.753][info] [#0:script\workspace\loading.lua:181]: Compile files takes [0.000] sec: <fallback>
+[00:16:26.753][info] [#0:script\workspace\loading.lua:182]: Loaded finish:	<fallback>
+[00:16:26.753][info] [#0:script\workspace\workspace.lua:387]: Preload finish at:	<fallback>

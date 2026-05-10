@@ -11,6 +11,12 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
+$UpdateYtDlpOnly = [bool]$YtDlpOnly
+$OmitMpvUpdate = [bool]$SkipMpv
+$OmitScriptUpdate = [bool]$SkipScripts
+$CloseMpvForUpdate = [bool]$ForceCloseMpv
+$PauseOnExit = -not [bool]$NoPause
+
 $UserAgent = "mpv-portable-updater"
 $RootDir = $PSScriptRoot
 $InstallDir = if (Test-Path (Join-Path $RootDir "portable_config")) {
@@ -19,19 +25,32 @@ $InstallDir = if (Test-Path (Join-Path $RootDir "portable_config")) {
     $RootDir
 }
 
+function Write-ColorMessage {
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [Parameter(Mandatory)][ConsoleColor]$ForegroundColor
+    )
+
+    try {
+        $Host.UI.WriteLine($ForegroundColor, $Host.UI.RawUI.BackgroundColor, $Message)
+    } catch {
+        Write-Output $Message
+    }
+}
+
 function Write-Step {
     param([string]$Message)
-    Write-Host "`n==> $Message" -ForegroundColor Cyan
+    Write-ColorMessage -Message "`n==> $Message" -ForegroundColor Cyan
 }
 
 function Write-Ok {
     param([string]$Message)
-    Write-Host "OK  $Message" -ForegroundColor Green
+    Write-ColorMessage -Message "OK  $Message" -ForegroundColor Green
 }
 
 function Write-Warn {
     param([string]$Message)
-    Write-Host "WARN $Message" -ForegroundColor Yellow
+    Write-ColorMessage -Message "WARN $Message" -ForegroundColor Yellow
 }
 
 function Get-OptionalCommandPath {
@@ -57,7 +76,7 @@ function Invoke-Download {
     Invoke-WebRequest -Uri $Uri -UserAgent $UserAgent -OutFile $OutFile -UseBasicParsing
 }
 
-function Remove-TempTree {
+function Invoke-TempTreeCleanup {
     param([Parameter(Mandatory)][string]$Path)
 
     $resolved = Resolve-Path -LiteralPath $Path -ErrorAction SilentlyContinue
@@ -92,21 +111,35 @@ function Expand-With7zr {
     )
 
     $sevenZip = Get-7zr
-    $args = @("x", "-y", "-o$Destination", $Archive)
-    $process = Start-Process -FilePath $sevenZip -ArgumentList $args -Wait -PassThru -NoNewWindow
+    $sevenZipArgs = @("x", "-y", "-o$Destination", $Archive)
+    $process = Start-Process -FilePath $sevenZip -ArgumentList $sevenZipArgs -Wait -PassThru -NoNewWindow
     if ($process.ExitCode -ne 0) {
         throw "7zr failed with exit code $($process.ExitCode)"
     }
+}
+
+function Expand-ArchiveFile {
+    param(
+        [Parameter(Mandatory)][string]$Archive,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    if ([IO.Path]::GetExtension($Archive) -ieq ".zip") {
+        Expand-Archive -LiteralPath $Archive -DestinationPath $Destination -Force
+        return
+    }
+
+    Expand-With7zr -Archive $Archive -Destination $Destination
 }
 
 function Test-MpvRunning {
     [bool](Get-Process -Name "mpv" -ErrorAction SilentlyContinue)
 }
 
-function Stop-MpvForUpdate {
+function Invoke-MpvStopForUpdate {
     if (-not (Test-MpvRunning)) { return $true }
 
-    if (-not $ForceCloseMpv) {
+    if (-not $CloseMpvForUpdate) {
         Write-Warn "mpv is running. Close it or rerun with -ForceCloseMpv to update mpv.exe."
         return $false
     }
@@ -131,7 +164,7 @@ function Get-MpvConsole {
     $null
 }
 
-function Update-YtDlp {
+function Invoke-YtDlpUpdate {
     Write-Step "Updating yt-dlp"
     $exe = Join-Path $InstallDir "yt-dlp.exe"
 
@@ -148,11 +181,11 @@ function Update-YtDlp {
     Write-Ok "yt-dlp $version"
 }
 
-function Update-Mpv {
-    if ($SkipMpv -or $YtDlpOnly) { return }
+function Invoke-MpvUpdate {
+    if ($OmitMpvUpdate -or $UpdateYtDlpOnly) { return }
     Write-Step "Updating mpv"
 
-    if (-not (Stop-MpvForUpdate)) { return }
+    if (-not (Invoke-MpvStopForUpdate)) { return }
 
     $rssUrl = "https://sourceforge.net/projects/mpv-player-windows/rss?path=/64bit"
     $rssResponse = Invoke-WebRequest -Uri $rssUrl -UserAgent $UserAgent -UseBasicParsing
@@ -165,7 +198,7 @@ function Update-Mpv {
     $archive = Join-Path $InstallDir "mpv_update.7z"
 
     Invoke-Download $downloadUrl $archive
-    Expand-With7zr $archive $InstallDir
+    Expand-ArchiveFile -Archive $archive -Destination $InstallDir
     Remove-Item -LiteralPath $archive -Force
 
     $mpv = Get-MpvConsole
@@ -196,7 +229,7 @@ function Get-RawGitHubFile {
     throw "Could not locate $Path in $Repo."
 }
 
-function Update-ScriptFile {
+function Invoke-ScriptFileUpdate {
     param(
         [Parameter(Mandatory)][string]$Repo,
         [Parameter(Mandatory)][string]$RemotePath,
@@ -234,7 +267,7 @@ function Backup-File {
     Copy-Item -LiteralPath $Path -Destination $backupPath -Force
 }
 
-function Patch-ThumbfastPortablePath {
+function Invoke-ThumbfastPortablePathPatch {
     param([Parameter(Mandatory)][string]$Path)
 
     $content = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
@@ -268,23 +301,23 @@ end
     Write-Ok "patched thumbfast portable mpv path"
 }
 
-function Update-LuaScripts {
-    if ($SkipScripts -or $YtDlpOnly) { return }
+function Invoke-LuaScriptUpdate {
+    if ($OmitScriptUpdate -or $UpdateYtDlpOnly) { return }
 
     Write-Step "Updating selected Lua scripts"
-    $thumbfast = Update-ScriptFile "po5/thumbfast" "thumbfast.lua" "scripts\thumbfast.lua"
-    Patch-ThumbfastPortablePath $thumbfast
+    $thumbfast = Invoke-ScriptFileUpdate -Repo "po5/thumbfast" -RemotePath "thumbfast.lua" -LocalPath "scripts\thumbfast.lua"
+    Invoke-ThumbfastPortablePathPatch -Path $thumbfast
 
-    Update-ScriptFile "po5/memo" "memo.lua" "scripts\memo.lua" | Out-Null
-    Update-ScriptFile "po5/evafast" "evafast.lua" "scripts\evafast.lua" | Out-Null
-    Update-ScriptFile "mpv-player/mpv" "TOOLS/lua/autoload.lua" "scripts\autoload.lua" | Out-Null
-    Update-ScriptFile "mpv-player/mpv" "TOOLS/lua/autodeint.lua" "scripts\autodeint.lua" | Out-Null
+    Invoke-ScriptFileUpdate -Repo "po5/memo" -RemotePath "memo.lua" -LocalPath "scripts\memo.lua" | Out-Null
+    Invoke-ScriptFileUpdate -Repo "po5/evafast" -RemotePath "evafast.lua" -LocalPath "scripts\evafast.lua" | Out-Null
+    Invoke-ScriptFileUpdate -Repo "mpv-player/mpv" -RemotePath "TOOLS/lua/autoload.lua" -LocalPath "scripts\autoload.lua" | Out-Null
+    Invoke-ScriptFileUpdate -Repo "mpv-player/mpv" -RemotePath "TOOLS/lua/autodeint.lua" -LocalPath "scripts\autodeint.lua" | Out-Null
 
-    Update-SponsorBlockIfPresent
+    Invoke-SponsorBlockUpdateIfPresent
 }
 
-function Update-Uosc {
-    if ($SkipScripts -or $YtDlpOnly) { return }
+function Invoke-UoscUpdate {
+    if ($OmitScriptUpdate -or $UpdateYtDlpOnly) { return }
 
     Write-Step "Updating uosc without touching settings"
     $release = Get-LatestRelease "tomasklaen/uosc"
@@ -297,7 +330,7 @@ function Update-Uosc {
 
     try {
         Invoke-Download $asset.browser_download_url $archive
-        Expand-With7zr $archive $workDir
+        Expand-ArchiveFile -Archive $archive -Destination $workDir
 
         $sourceUosc = Get-ChildItem -LiteralPath $workDir -Recurse -Directory |
             Where-Object { $_.FullName -match '\\scripts\\uosc$' } |
@@ -328,11 +361,11 @@ function Update-Uosc {
 
         Write-Ok "uosc updated; script-opts\uosc.conf was preserved"
     } finally {
-        Remove-TempTree $workDir
+        Invoke-TempTreeCleanup -Path $workDir
     }
 }
 
-function Update-SponsorBlockIfPresent {
+function Invoke-SponsorBlockUpdateIfPresent {
     $scriptPath = Join-Path $InstallDir "scripts\sponsorblock.lua"
     $sharedPath = Join-Path $InstallDir "scripts\sponsorblock_shared"
     if (-not (Test-Path -LiteralPath $scriptPath) -and -not (Test-Path -LiteralPath $sharedPath)) {
@@ -341,13 +374,13 @@ function Update-SponsorBlockIfPresent {
     }
 
     Write-Step "Updating installed SponsorBlock script"
-    $script = Update-ScriptFile "po5/mpv_sponsorblock" "sponsorblock.lua" "scripts\sponsorblock.lua"
-    Update-ScriptFile "po5/mpv_sponsorblock" "sponsorblock_shared/main.lua" "scripts\sponsorblock_shared\main.lua" | Out-Null
-    Update-ScriptFile "po5/mpv_sponsorblock" "sponsorblock_shared/sponsorblock.py" "scripts\sponsorblock_shared\sponsorblock.py" | Out-Null
-    Patch-SponsorBlockKeybinds $script
+    $script = Invoke-ScriptFileUpdate -Repo "po5/mpv_sponsorblock" -RemotePath "sponsorblock.lua" -LocalPath "scripts\sponsorblock.lua"
+    Invoke-ScriptFileUpdate -Repo "po5/mpv_sponsorblock" -RemotePath "sponsorblock_shared/main.lua" -LocalPath "scripts\sponsorblock_shared\main.lua" | Out-Null
+    Invoke-ScriptFileUpdate -Repo "po5/mpv_sponsorblock" -RemotePath "sponsorblock_shared/sponsorblock.py" -LocalPath "scripts\sponsorblock_shared\sponsorblock.py" | Out-Null
+    Invoke-SponsorBlockCompatibilityPatch -Path $script
 }
 
-function Patch-SponsorBlockKeybinds {
+function Invoke-SponsorBlockCompatibilityPatch {
     param([Parameter(Mandatory)][string]$Path)
 
     $content = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
@@ -356,6 +389,10 @@ function Patch-SponsorBlockKeybinds {
         'mp.add_key_binding("G", "submit_segment", submit_segment)' = 'mp.add_key_binding(nil, "submit_segment", submit_segment)'
         'mp.add_key_binding("h", "upvote_segment", function() return vote("1") end)' = 'mp.add_key_binding(nil, "upvote_segment", function() return vote("1") end)'
         'mp.add_key_binding("H", "downvote_segment", function() return vote("0") end)' = 'mp.add_key_binding(nil, "downvote_segment", function() return vote("0") end)'
+        "local speed_timer = nil`nlocal fade_timer = nil" = "---@type any`nlocal speed_timer = nil`n---@type any`nlocal fade_timer = nil"
+        '        speed_timer:kill()' = '        if speed_timer ~= nil then speed_timer:kill() end'
+        'if not youtube_id or string.len(youtube_id) < 11 or (local_pattern and string.len(youtube_id) ~= 11) then return end' = 'if not youtube_id or string.len(youtube_id) < 11 or (options.local_pattern ~= "" and string.len(youtube_id) ~= 11) then return end'
+        'local cur_time = os.time(os.date("*t"))' = 'local cur_time = os.time()'
     }
 
     foreach ($old in $replacements.Keys) {
@@ -363,10 +400,10 @@ function Patch-SponsorBlockKeybinds {
     }
 
     Set-Content -LiteralPath $Path -Value $content -Encoding UTF8
-    Write-Ok "patched SponsorBlock key bindings to avoid Vim/memo conflicts"
+    Write-Ok "patched SponsorBlock compatibility fixes"
 }
 
-function Repair-ConfigFolders {
+function Invoke-ConfigFolderRepair {
     Write-Step "Repairing local folders"
     foreach ($path in @(
         "cache",
@@ -421,23 +458,23 @@ function Show-ToolStatus {
 }
 
 try {
-    Write-Host "Target: $InstallDir" -ForegroundColor DarkGray
-    Repair-ConfigFolders
+    Write-ColorMessage -Message "Target: $InstallDir" -ForegroundColor DarkGray
+    Invoke-ConfigFolderRepair
     Show-ToolStatus
-    Update-YtDlp
-    Update-Mpv
-    Update-Uosc
-    Update-LuaScripts
+    Invoke-YtDlpUpdate
+    Invoke-MpvUpdate
+    Invoke-UoscUpdate
+    Invoke-LuaScriptUpdate
     Test-MpvConfig
-    Write-Host "`nAll requested updates completed." -ForegroundColor Cyan
+    Write-ColorMessage -Message "`nAll requested updates completed." -ForegroundColor Cyan
 } catch {
-    Write-Host "`nUpdate failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-ColorMessage -Message "`nUpdate failed: $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 } finally {
-    if (-not $NoPause -and $Host.Name -ne "ConsoleHost") {
+    if ($PauseOnExit -and $Host.Name -ne "ConsoleHost") {
         Start-Sleep -Seconds 2
-    } elseif (-not $NoPause) {
-        Write-Host "Press any key to exit..."
+    } elseif ($PauseOnExit) {
+        Write-ColorMessage -Message "Press any key to exit..." -ForegroundColor Gray
         $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     }
 }

@@ -51,25 +51,19 @@ local options = {
     direct_io = false,
 
     -- Custom path to the mpv executable
-    mpv_path = "C:/Users/ahm_e/mpv/portable_config/mpv.exe"
+    mpv_path = "mpv"
 }
 
 mp.utils = require "mp.utils"
 mp.options = require "mp.options"
 mp.options.read_options(options, "thumbfast")
--- Intelligent Portable Detection (Auto-Patch):
+-- Portable mpv path detection.
 if options.mpv_path == "mpv" then
-    local candidates = {
-        "~~/mpv.exe",
-        "~~/mpv.com",
-        "~~/../mpv.exe",
-        "~~/../mpv.com"
-    }
-    for _, path in ipairs(candidates) do
-        local expanded = mp.command_native({"expand-path", path})
-        local info = mp.utils.file_info(expanded)
+    for _, candidate in ipairs({"~~/mpv.exe", "~~/mpv.com", "~~/../mpv.exe", "~~/../mpv.com"}) do
+        local path = mp.command_native({"expand-path", candidate})
+        local info = mp.utils.file_info(path)
         if info and info.is_file then
-            options.mpv_path = expanded:gsub("\\", "/")
+            options.mpv_path = path:gsub("\\", "/")
             break
         end
     end
@@ -966,3 +960,4 @@ mp.register_event("file-loaded", file_load)
 mp.register_event("shutdown", shutdown)
 
 mp.register_idle(watch_changes)
+

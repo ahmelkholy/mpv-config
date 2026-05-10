@@ -19,6 +19,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $ProgressPreference = "SilentlyContinue"
 
+$BrowserCookies = $CookiesFromBrowser
+$UseDryRun = [bool]$DryRun
+
 $UserAgent = "mpv-youtube-launcher"
 $RootDir = $PSScriptRoot
 $ConfigDir = Join-Path $RootDir "portable_config"
@@ -28,6 +31,19 @@ $LaunchArgs = @($MpvArgs) + @($RemainingArgs)
 
 if (-not (Test-Path -LiteralPath $Mpv)) {
     $Mpv = Join-Path $ConfigDir "mpv.exe"
+}
+
+function Write-ColorMessage {
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [Parameter(Mandatory)][ConsoleColor]$ForegroundColor
+    )
+
+    try {
+        $Host.UI.WriteLine($ForegroundColor, $Host.UI.RawUI.BackgroundColor, $Message)
+    } catch {
+        Write-Output $Message
+    }
 }
 
 function Test-YouTubeUrl {
@@ -57,36 +73,36 @@ function Invoke-Download {
 }
 
 function Install-YtDlp {
-    Write-Host "Installing yt-dlp..." -ForegroundColor Yellow
+    Write-ColorMessage -Message "Installing yt-dlp..." -ForegroundColor Yellow
     $release = Invoke-RestMethod -Uri "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest" -UserAgent $UserAgent
     $asset = $release.assets | Where-Object { $_.name -eq "yt-dlp.exe" } | Select-Object -First 1
     if (-not $asset) { throw "Could not find yt-dlp.exe in the latest yt-dlp release." }
-    Invoke-Download $asset.browser_download_url $YtDlp
+    Invoke-Download -Uri $asset.browser_download_url -OutFile $YtDlp
 }
 
 function Repair-YtDlp {
     if (Test-Path -LiteralPath $YtDlp) {
         $backup = Join-Path $ConfigDir ("yt-dlp.failed.{0}.exe" -f (Get-Date -Format "yyyyMMddHHmmss"))
         Move-Item -LiteralPath $YtDlp -Destination $backup -Force
-        Write-Host "Moved failed yt-dlp to $backup" -ForegroundColor Yellow
+        Write-ColorMessage -Message "Moved failed yt-dlp to $backup" -ForegroundColor Yellow
     }
     Install-YtDlp
 }
 
-function Update-YtDlp {
+function Invoke-YtDlpUpdate {
     if (-not (Test-Path -LiteralPath $YtDlp)) {
         Install-YtDlp
     }
 
-    Write-Host "Checking yt-dlp update..." -ForegroundColor Cyan
+    Write-ColorMessage -Message "Checking yt-dlp update..." -ForegroundColor Cyan
     & $YtDlp -U
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "yt-dlp self-update failed; reinstalling latest release..." -ForegroundColor Yellow
+        Write-ColorMessage -Message "yt-dlp self-update failed; reinstalling latest release..." -ForegroundColor Yellow
         Repair-YtDlp
     }
 
     $version = (& $YtDlp --version).Trim()
-    Write-Host "yt-dlp $version" -ForegroundColor Green
+    Write-ColorMessage -Message "yt-dlp $version" -ForegroundColor Green
 }
 
 function Get-OptionalCommandPath {
@@ -98,7 +114,7 @@ function Get-OptionalCommandPath {
     $null
 }
 
-function Get-YtDlpRawOptions {
+function Get-YtDlpRawOption {
     $raw = @()
 
     $runtime = Get-OptionalCommandPath @("deno", "node", "bun", "qjs", "quickjs")
@@ -113,14 +129,14 @@ function Get-YtDlpRawOptions {
         $raw += "--ytdl-raw-options-append=ffmpeg-location=$($ffmpeg.Replace('\', '/'))"
     }
 
-    if ($CookiesFromBrowser) {
-        $raw += "--ytdl-raw-options-append=cookies-from-browser=$CookiesFromBrowser"
+    if ($BrowserCookies) {
+        $raw += "--ytdl-raw-options-append=cookies-from-browser=$BrowserCookies"
     }
 
     $raw
 }
 
-function Get-MpvArgs {
+function Get-MpvArgument {
     param([int]$MaxHeight)
 
     $portableYtDlp = $YtDlp.Replace("\", "/")
@@ -136,15 +152,15 @@ function Get-MpvArgs {
         "--demuxer-readahead-secs=20",
         "--demuxer-max-bytes=512MiB",
         "--demuxer-max-back-bytes=128MiB"
-    ) + (Get-YtDlpRawOptions) + $LaunchArgs
+    ) + (Get-YtDlpRawOption) + $LaunchArgs
 }
 
-function Start-MpvOnce {
+function Invoke-MpvOnce {
     param([int]$MaxHeight)
-    $mpvArguments = @(Get-MpvArgs -MaxHeight $MaxHeight) | Where-Object { $_ -ne $null -and $_ -ne "" }
-    if ($DryRun) {
-        Write-Host $Mpv
-        $mpvArguments | ForEach-Object { Write-Host $_ }
+    $mpvArguments = @(Get-MpvArgument -MaxHeight $MaxHeight) | Where-Object { $_ -ne $null -and $_ -ne "" }
+    if ($UseDryRun) {
+        Write-Output $Mpv
+        $mpvArguments | ForEach-Object { Write-Output $_ }
         return 0
     }
 
@@ -159,17 +175,17 @@ if (-not (Test-Path -LiteralPath $Mpv)) {
 $youtubeUrl = Get-FirstYouTubeUrl
 
 if ($youtubeUrl -and -not $NoUpdate) {
-    Update-YtDlp
+    Invoke-YtDlpUpdate
 } elseif ($youtubeUrl -and -not (Test-Path -LiteralPath $YtDlp)) {
     Install-YtDlp
 }
 
-$exitCode = Start-MpvOnce -MaxHeight $Height
+$exitCode = Invoke-MpvOnce -MaxHeight $Height
 
 if ($youtubeUrl -and $exitCode -ne 0) {
-    Write-Host "mpv failed for YouTube. Refreshing yt-dlp and retrying at 1080p..." -ForegroundColor Yellow
-    Update-YtDlp
-    $exitCode = Start-MpvOnce -MaxHeight 1080
+    Write-ColorMessage -Message "mpv failed for YouTube. Refreshing yt-dlp and retrying at 1080p..." -ForegroundColor Yellow
+    Invoke-YtDlpUpdate
+    $exitCode = Invoke-MpvOnce -MaxHeight 1080
 }
 
 exit $exitCode
