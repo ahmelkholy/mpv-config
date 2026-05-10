@@ -11,8 +11,8 @@ echo Starting Updater...
 :: Check for PowerShell Core (pwsh) or Standard (powershell)
 where pwsh >nul 2>nul
 if %errorlevel% equ 0 (
-    pwsh -NoProfile -ExecutionPolicy Bypass -File "mpv-update.ps1"
+    pwsh -NoProfile -ExecutionPolicy Bypass -File "mpv-update.ps1" %*
 ) else (
-    powershell -NoProfile -ExecutionPolicy Bypass -File "mpv-update.ps1"
+    powershell -NoProfile -ExecutionPolicy Bypass -File "mpv-update.ps1" %*
 )
 popd

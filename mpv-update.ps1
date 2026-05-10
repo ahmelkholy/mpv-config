@@ -1,319 +1,443 @@
+[CmdletBinding()]
+param(
+    [switch]$YtDlpOnly,
+    [switch]$SkipMpv,
+    [switch]$SkipScripts,
+    [switch]$ForceCloseMpv,
+    [switch]$NoPause
+)
+
+Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
-$useragent = "mpv-smart-updater"
+$ProgressPreference = "SilentlyContinue"
 
-# --- Intelligent Root Detection ---
-# The script is running from the root of the repo (C:\Users\ahm_e\mpv\
-# We need to find where mpv.exe and the 'scripts' folder are located.
-
-# Check 1: Is mpv.exe in the same folder as this script? (Standard Layout)
-if (Test-Path "$PSScriptRoot\mpv.exe") {
-    $install_dir = $PSScriptRoot
-    Write-Host "Detected Standard Layout: mpv.exe found in root." -ForegroundColor Cyan
-}
-# Check 2: Is mpv.exe inside portable_config? (Current User Layout)
-elseif (Test-Path "$PSScriptRoot\portable_config\mpv.exe") {
-    $install_dir = "$PSScriptRoot\portable_config"
-    Write-Host "Detected Portable Layout: mpv.exe found in portable_config." -ForegroundColor Cyan
-}
-else {
-    # Fallback: Assume portable_config is the target for scripts even if bin is missing
-    $install_dir = "$PSScriptRoot\portable_config"
-    Write-Host "mpv.exe not found. Defaulting target to portable_config." -ForegroundColor Yellow
+$UserAgent = "mpv-portable-updater"
+$RootDir = $PSScriptRoot
+$InstallDir = if (Test-Path (Join-Path $RootDir "portable_config")) {
+    Join-Path $RootDir "portable_config"
+} else {
+    $RootDir
 }
 
-Write-Host "Target Installation Directory: $install_dir" -ForegroundColor Gray
+function Write-Step {
+    param([string]$Message)
+    Write-Host "`n==> $Message" -ForegroundColor Cyan
+}
 
-# --- Pre-Update Checks ---
+function Write-Ok {
+    param([string]$Message)
+    Write-Host "OK  $Message" -ForegroundColor Green
+}
 
-# Check if MPV is running
-$mpv_processes = Get-Process -Name "mpv" -ErrorAction SilentlyContinue
-if ($mpv_processes) {
-    Write-Host "MPV is currently running." -ForegroundColor Red
-    Write-Host "Please close MPV to allow updates to proceed." -ForegroundColor Yellow
-    $result = Read-Host "Press Enter to retry (or Ctrl+C to cancel)"
-    
-    $mpv_processes = Get-Process -Name "mpv" -ErrorAction SilentlyContinue
-    if ($mpv_processes) {
-        Write-Host "MPV is still running. Terminating processes..." -ForegroundColor Red
-        Stop-Process -Name "mpv" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 1
+function Write-Warn {
+    param([string]$Message)
+    Write-Host "WARN $Message" -ForegroundColor Yellow
+}
+
+function Get-OptionalCommandPath {
+    param([string[]]$Names)
+    foreach ($name in $Names) {
+        $cmd = Get-Command $name -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($cmd) { return $cmd.Source }
+    }
+    $null
+}
+
+function Invoke-Download {
+    param(
+        [Parameter(Mandatory)][string]$Uri,
+        [Parameter(Mandatory)][string]$OutFile
+    )
+
+    $parent = Split-Path -Parent $OutFile
+    if ($parent -and -not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Path $parent | Out-Null
+    }
+
+    Invoke-WebRequest -Uri $Uri -UserAgent $UserAgent -OutFile $OutFile -UseBasicParsing
+}
+
+function Remove-TempTree {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $resolved = Resolve-Path -LiteralPath $Path -ErrorAction SilentlyContinue
+    if (-not $resolved) { return }
+
+    $tempRoot = [IO.Path]::GetTempPath()
+    if (-not $resolved.Path.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove non-temp path: $($resolved.Path)"
+    }
+
+    Remove-Item -LiteralPath $resolved.Path -Recurse -Force
+}
+
+function Get-LatestRelease {
+    param([Parameter(Mandatory)][string]$Repo)
+    Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -UserAgent $UserAgent
+}
+
+function Get-7zr {
+    $exe = Join-Path $InstallDir "7z\7zr.exe"
+    if (-not (Test-Path -LiteralPath $exe)) {
+        Write-Step "Installing 7zr extractor"
+        Invoke-Download "https://www.7-zip.org/a/7zr.exe" $exe
+    }
+    $exe
+}
+
+function Expand-With7zr {
+    param(
+        [Parameter(Mandatory)][string]$Archive,
+        [Parameter(Mandatory)][string]$Destination
+    )
+
+    $sevenZip = Get-7zr
+    $args = @("x", "-y", "-o$Destination", $Archive)
+    $process = Start-Process -FilePath $sevenZip -ArgumentList $args -Wait -PassThru -NoNewWindow
+    if ($process.ExitCode -ne 0) {
+        throw "7zr failed with exit code $($process.ExitCode)"
     }
 }
 
-# --- Helper Functions ---
+function Test-MpvRunning {
+    [bool](Get-Process -Name "mpv" -ErrorAction SilentlyContinue)
+}
 
-function Get-7z {
-    # Check for 7z relative to the install dir
-    $7z_exe = Join-Path $install_dir "7z\7zr.exe"
-    if (-not (Test-Path $7z_exe)) {
-        Write-Host "Downloading 7zr..." -ForegroundColor Yellow
-        $dir = Split-Path $7z_exe
-        if (-not (Test-Path $dir)) { New-Item -ItemType Directory -Path $dir | Out-Null }
-        Invoke-WebRequest -Uri "https://www.7-zip.org/a/7zr.exe" -UserAgent $useragent -OutFile $7z_exe
+function Stop-MpvForUpdate {
+    if (-not (Test-MpvRunning)) { return $true }
+
+    if (-not $ForceCloseMpv) {
+        Write-Warn "mpv is running. Close it or rerun with -ForceCloseMpv to update mpv.exe."
+        return $false
     }
-    return $7z_exe
+
+    Stop-Process -Name "mpv" -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 1
+    -not (Test-MpvRunning)
 }
 
-function Extract-Zip ($zipFile, $destDir) {
-    $7z = Get-7z
-    # x: extract with full paths
-    # -y: assume yes on all queries
-    # -o: output directory
-    $args = "x -y -o`"$destDir`" `"$zipFile`""
-    Start-Process -FilePath $7z -ArgumentList $args -Wait -NoNewWindow
-}
+function Get-MpvConsole {
+    $candidates = @(
+        (Join-Path $InstallDir "mpv.com"),
+        (Join-Path $InstallDir "mpv.exe"),
+        (Join-Path $RootDir "mpv.com"),
+        (Join-Path $RootDir "mpv.exe")
+    )
 
-function Download-File ($url, $dest) {
-    Write-Host "Downloading $url..." -ForegroundColor DarkGray
-    Invoke-WebRequest -Uri $url -UserAgent $useragent -OutFile $dest
-}
-
-function Get-GitHub-Latest-Release ($repo) {
-    $api_url = "https://api.github.com/repos/$repo/releases/latest"
-    try {
-        $json = Invoke-RestMethod -Uri $api_url -UserAgent $useragent
-        return $json
-    } catch {
-        Write-Host "Error fetching release for $repo" -ForegroundColor Red
-        return $null
+    foreach ($candidate in $candidates) {
+        if (Test-Path -LiteralPath $candidate) { return $candidate }
     }
-}
 
-# --- Update Binaries ---
-
-function Update-Mpv {
-    Write-Host "`n--- Updating MPV ---" -ForegroundColor Magenta
-    $rss_url = "https://sourceforge.net/projects/mpv-player-windows/rss?path=/64bit"
-    try {
-        [xml]$rss = (New-Object System.Net.WebClient).DownloadString($rss_url)
-        $latest_item = $rss.rss.channel.item | Select-Object -First 1
-        $latest_file = ($latest_item.link -split "/")[-2] 
-        $download_url = "https://download.sourceforge.net/mpv-player-windows/$latest_file"
-        
-        $dest_zip = Join-Path $install_dir "mpv_update.7z"
-        Download-File $download_url $dest_zip
-        
-        Write-Host "Extracting MPV..." -ForegroundColor Yellow
-        Extract-Zip $dest_zip $install_dir
-        
-        Remove-Item $dest_zip -Force
-        Write-Host "MPV Updated." -ForegroundColor Green
-    } catch {
-        Write-Host "Failed to update MPV: $_" -ForegroundColor Red
-    }
+    $null
 }
 
 function Update-YtDlp {
-    Write-Host "`n--- Updating yt-dlp ---" -ForegroundColor Magenta
-    $exe = Join-Path $install_dir "yt-dlp.exe"
-    if (Test-Path $exe) {
-        Write-Host "Running internal update..." -ForegroundColor Yellow
-        Start-Process -FilePath $exe -ArgumentList "-U" -Wait -NoNewWindow
+    Write-Step "Updating yt-dlp"
+    $exe = Join-Path $InstallDir "yt-dlp.exe"
+
+    if (-not (Test-Path -LiteralPath $exe)) {
+        $release = Get-LatestRelease "yt-dlp/yt-dlp"
+        $asset = $release.assets | Where-Object { $_.name -eq "yt-dlp.exe" } | Select-Object -First 1
+        if (-not $asset) { throw "yt-dlp.exe asset was not found in latest release." }
+        Invoke-Download $asset.browser_download_url $exe
+        Write-Ok "installed yt-dlp.exe"
+    }
+
+    & $exe -U
+    $version = (& $exe --version).Trim()
+    Write-Ok "yt-dlp $version"
+}
+
+function Update-Mpv {
+    if ($SkipMpv -or $YtDlpOnly) { return }
+    Write-Step "Updating mpv"
+
+    if (-not (Stop-MpvForUpdate)) { return }
+
+    $rssUrl = "https://sourceforge.net/projects/mpv-player-windows/rss?path=/64bit"
+    $rssResponse = Invoke-WebRequest -Uri $rssUrl -UserAgent $UserAgent -UseBasicParsing
+    [xml]$rss = $rssResponse.Content
+    $latestItem = $rss.rss.channel.item | Select-Object -First 1
+    if (-not $latestItem) { throw "Could not read mpv release feed." }
+
+    $latestFile = ($latestItem.link -split "/")[-2]
+    $downloadUrl = "https://download.sourceforge.net/mpv-player-windows/$latestFile"
+    $archive = Join-Path $InstallDir "mpv_update.7z"
+
+    Invoke-Download $downloadUrl $archive
+    Expand-With7zr $archive $InstallDir
+    Remove-Item -LiteralPath $archive -Force
+
+    $mpv = Get-MpvConsole
+    if ($mpv) {
+        $firstLine = (& $mpv --version 2>&1 | Select-Object -First 1).ToString()
+        Write-Ok $firstLine
     } else {
-        $release = Get-GitHub-Latest-Release "yt-dlp/yt-dlp"
-        if ($release) {
-            $asset = $release.assets | Where-Object { $_.name -eq "yt-dlp.exe" }
-            Download-File $asset.browser_download_url $exe
-            Write-Host "yt-dlp Installed." -ForegroundColor Green
-        }
+        Write-Warn "mpv binary was not found after extraction."
     }
 }
 
-# --- Update Scripts ---
+function Get-RawGitHubFile {
+    param(
+        [Parameter(Mandatory)][string]$Repo,
+        [Parameter(Mandatory)][string]$Path
+    )
 
-function Update-Uosc {
-    Write-Host "`n--- Updating uosc ---" -ForegroundColor Magenta
-    $release = Get-GitHub-Latest-Release "darsain/uosc"
-    if ($release) {
-        $asset = $release.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
-        $zip_path = Join-Path $install_dir "uosc_update.zip"
-        Download-File $asset.browser_download_url $zip_path
-        
-        Write-Host "Extracting uosc..." -ForegroundColor Yellow
-        Extract-Zip $zip_path $install_dir
-        
-        Remove-Item $zip_path -Force
-        Write-Host "uosc Updated." -ForegroundColor Green
-        
-        Patch-Uosc
+    foreach ($branch in @("master", "main")) {
+        $url = "https://raw.githubusercontent.com/$Repo/$branch/$Path"
+        try {
+            Invoke-WebRequest -Uri $url -Method Head -UserAgent $UserAgent -UseBasicParsing | Out-Null
+            return $url
+        } catch {
+            continue
+        }
     }
+
+    throw "Could not locate $Path in $Repo."
 }
 
-function Patch-Uosc {
-    Write-Host "Re-applying Dual Subtitle customization to uosc..." -ForegroundColor Yellow
-    $menus_file = Join-Path $install_dir "scripts\uosc\lib\menus.lua"
-    
-    if (Test-Path $menus_file) {
-        $content = Get-Content $menus_file -Raw -Encoding UTF8
-        
-        # 1. Add Menu Item
-        $menu_item_code = @"
-		if opts.type == 'sub' then
-			items[#items + 1] = {
-				title = t('Toggle Dual Subtitles'),
-				value = '{toggle_dual}',
-				icon = 'subtitles',
-			}
-		end
+function Update-ScriptFile {
+    param(
+        [Parameter(Mandatory)][string]$Repo,
+        [Parameter(Mandatory)][string]$RemotePath,
+        [Parameter(Mandatory)][string]$LocalPath
+    )
 
-"@
-        # Look for the end of the load_command block
-        $anchor_1 = "actions = opts.download_command`r`n					and {{name = 'download', icon = 'language', label = t('Search online')}}`r`n					or nil,`r`n			}`r`n		end"
-        # Normalize line endings for matching
-        $normalized_content = $content -replace "`r`n", "`n"
-        $normalized_anchor_1 = $anchor_1 -replace "`r`n", "`n"
-        
-        # Check if already patched
-        if ($normalized_content -notmatch "Toggle Dual Subtitles") {
-             if ($normalized_content.Contains($normalized_anchor_1)) {
-                $content = $content.Replace($anchor_1, $anchor_1 + "`r`n`r`n" + $menu_item_code)
-                Write-Host "Added Dual Subtitles menu item." -ForegroundColor Green
-             } else {
-                Write-Host "Could not find anchor for menu item. Customization skipped." -ForegroundColor Red
-             }
-        } else {
-             Write-Host "Dual Subtitles menu item already present." -ForegroundColor Green
-        }
+    $dest = Join-Path $InstallDir $LocalPath
+    $url = Get-RawGitHubFile $Repo $RemotePath
+    Backup-File $dest
+    Invoke-Download $url $dest
+    Write-Ok $LocalPath
+    $dest
+}
 
-        # 2. Add Event Handler
-        $handler_code = "elseif event.value == '{toggle_dual}' then`r`n			mp.command('script-message toggle-dual-sub')"
-        $anchor_2 = "mp.command(event.action == 'download' and opts.download_command or opts.load_command)"
-        
-        if ($content -notmatch "script-message toggle-dual-sub") {
-             if ($content.Contains($anchor_2)) {
-                $content = $content.Replace($anchor_2, $anchor_2 + "`r`n		" + $handler_code)
-                 Write-Host "Added Dual Subtitles event handler." -ForegroundColor Green
-             } else {
-                 Write-Host "Could not find anchor for event handler. Customization skipped." -ForegroundColor Red
-             }
-        } else {
-             Write-Host "Dual Subtitles event handler already present." -ForegroundColor Green
-        }
-        
-        Set-Content -Path $menus_file -Value $content -Encoding UTF8
+function Backup-File {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path -LiteralPath $Path)) { return }
+
+    $base = (Resolve-Path -LiteralPath $InstallDir).Path.TrimEnd('\') + '\'
+    $full = (Resolve-Path -LiteralPath $Path).Path
+    $relative = if ($full.StartsWith($base, [StringComparison]::OrdinalIgnoreCase)) {
+        $full.Substring($base.Length)
     } else {
-        Write-Host "uosc menus.lua not found!" -ForegroundColor Red
+        Split-Path -Leaf $full
     }
+    $backupRoot = Join-Path $InstallDir ("cache\update-backups\{0}" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+    $backupPath = Join-Path $backupRoot $relative
+    $parent = Split-Path -Parent $backupPath
+
+    if (-not (Test-Path -LiteralPath $parent)) {
+        New-Item -ItemType Directory -Path $parent | Out-Null
+    }
+
+    Copy-Item -LiteralPath $Path -Destination $backupPath -Force
 }
 
-function Update-Script-File ($repo, $file_path, $local_subpath) {
-    # $local_subpath is relative to $install_dir
-    Write-Host "`n--- Updating $local_subpath ---" -ForegroundColor Magenta
-    try {
-        $url = ""
-        $branches = @("master", "main")
-        foreach ($branch in $branches) {
-            $test_url = "https://raw.githubusercontent.com/$repo/$branch/$file_path"
-            try {
-                $test = Invoke-WebRequest -Uri $test_url -Method Head -ErrorAction SilentlyContinue
-                if ($test.StatusCode -eq 200) {
-                    $url = $test_url
-                    break
-                }
-            } catch {}
-        }
-        
-        if ($url) {
-            $dest = Join-Path $install_dir $local_subpath
-            # Ensure directory exists
-            $parent = Split-Path $dest
-            if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent | Out-Null }
-            
-            Download-File $url $dest
-            return $dest
-        } else {
-            Write-Host "Could not find file in repo $repo" -ForegroundColor Red
-        }
-    } catch {
-        Write-Host "Failed to update $local_subpath" -ForegroundColor Red
+function Patch-ThumbfastPortablePath {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $content = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+    $needle = 'mp.options.read_options(options, "thumbfast")'
+
+    if ($content.Contains("Portable mpv path detection")) {
+        return
     }
-    return $null
-}
 
-function Update-Thumbfast {
-    $dest = Update-Script-File "po5/thumbfast" "thumbfast.lua" "scripts\thumbfast.lua"
-    if ($dest) {
-        Write-Host "Applying portable path fix to thumbfast..." -ForegroundColor Yellow
-        $content = Get-Content $dest -Raw
-        
-        # IMPROVED PATCH: Uses backslashes for Windows path safety and prints debug info
-        $patch_logic = @"
+    if (-not $content.Contains($needle)) {
+        Write-Warn "thumbfast portable path patch anchor was not found."
+        return
+    }
 
--- Intelligent Portable Detection (Auto-Patch):
+    $patch = @'
+
+-- Portable mpv path detection.
 if options.mpv_path == "mpv" then
-    local candidates = {
-        "~~/mpv.exe",
-        "~~/mpv.com",
-        "~~/../mpv.exe",
-        "~~/../mpv.com"
-    }
-    for _, path in ipairs(candidates) do
-        local expanded = mp.command_native({"expand-path", path})
-        local info = mp.utils.file_info(expanded)
+    for _, candidate in ipairs({"~~/mpv.exe", "~~/mpv.com", "~~/../mpv.exe", "~~/../mpv.com"}) do
+        local path = mp.command_native({"expand-path", candidate})
+        local info = mp.utils.file_info(path)
         if info and info.is_file then
-            -- Use backslashes for Windows compatibility
-            options.mpv_path = expanded:gsub("/", "\\")
-            mp.msg.info("Thumbfast found mpv at: " .. options.mpv_path)
+            options.mpv_path = path:gsub("\\", "/")
             break
         end
     end
 end
-"@
-        $needle = 'mp.options.read_options(options, "thumbfast")'
-        
-        if ($content.Contains($needle) -and -not $content.Contains("Intelligent Portable Detection")) {
-            $content = $content.Replace($needle, $needle + $patch_logic)
-            Set-Content -Path $dest -Value $content -Encoding UTF8
-            Write-Host "Thumbfast patched successfully." -ForegroundColor Green
-        } elseif ($content.Contains("Intelligent Portable Detection")) {
-             Write-Host "Thumbfast is already patched." -ForegroundColor Green
-        } else {
-            Write-Host "Could not patch thumbfast: anchor not found." -ForegroundColor Red
+'@
+
+    Set-Content -LiteralPath $Path -Value $content.Replace($needle, $needle + $patch) -Encoding UTF8
+    Write-Ok "patched thumbfast portable mpv path"
+}
+
+function Update-LuaScripts {
+    if ($SkipScripts -or $YtDlpOnly) { return }
+
+    Write-Step "Updating selected Lua scripts"
+    $thumbfast = Update-ScriptFile "po5/thumbfast" "thumbfast.lua" "scripts\thumbfast.lua"
+    Patch-ThumbfastPortablePath $thumbfast
+
+    Update-ScriptFile "po5/memo" "memo.lua" "scripts\memo.lua" | Out-Null
+    Update-ScriptFile "po5/evafast" "evafast.lua" "scripts\evafast.lua" | Out-Null
+    Update-ScriptFile "mpv-player/mpv" "TOOLS/lua/autoload.lua" "scripts\autoload.lua" | Out-Null
+    Update-ScriptFile "mpv-player/mpv" "TOOLS/lua/autodeint.lua" "scripts\autodeint.lua" | Out-Null
+
+    Update-SponsorBlockIfPresent
+}
+
+function Update-Uosc {
+    if ($SkipScripts -or $YtDlpOnly) { return }
+
+    Write-Step "Updating uosc without touching settings"
+    $release = Get-LatestRelease "tomasklaen/uosc"
+    $asset = $release.assets | Where-Object { $_.name -like "*.zip" } | Select-Object -First 1
+    if (-not $asset) { throw "Could not find uosc zip asset in latest release." }
+
+    $workDir = Join-Path ([IO.Path]::GetTempPath()) ("mpv-uosc-{0}" -f ([guid]::NewGuid()))
+    $archive = Join-Path $workDir "uosc.zip"
+    New-Item -ItemType Directory -Path $workDir | Out-Null
+
+    try {
+        Invoke-Download $asset.browser_download_url $archive
+        Expand-With7zr $archive $workDir
+
+        $sourceUosc = Get-ChildItem -LiteralPath $workDir -Recurse -Directory |
+            Where-Object { $_.FullName -match '\\scripts\\uosc$' } |
+            Select-Object -First 1
+
+        if (-not $sourceUosc) { throw "uosc archive did not contain scripts\uosc." }
+
+        $destUosc = Join-Path $InstallDir "scripts\uosc"
+        if (Test-Path -LiteralPath $destUosc) {
+            $backupRoot = Join-Path $InstallDir ("cache\update-backups\{0}\scripts" -f (Get-Date -Format "yyyyMMdd-HHmmss"))
+            if (-not (Test-Path -LiteralPath $backupRoot)) {
+                New-Item -ItemType Directory -Path $backupRoot | Out-Null
+            }
+            Copy-Item -LiteralPath $destUosc -Destination $backupRoot -Recurse -Force
+        }
+
+        if (-not (Test-Path -LiteralPath (Split-Path -Parent $destUosc))) {
+            New-Item -ItemType Directory -Path (Split-Path -Parent $destUosc) | Out-Null
+        }
+        Copy-Item -LiteralPath $sourceUosc.FullName -Destination (Split-Path -Parent $destUosc) -Recurse -Force
+
+        foreach ($font in @("uosc_icons.otf", "uosc_textures.ttf")) {
+            $sourceFont = Get-ChildItem -LiteralPath $workDir -Recurse -Filter $font | Select-Object -First 1
+            if ($sourceFont) {
+                Copy-Item -LiteralPath $sourceFont.FullName -Destination (Join-Path $InstallDir "fonts\$font") -Force
+            }
+        }
+
+        Write-Ok "uosc updated; script-opts\uosc.conf was preserved"
+    } finally {
+        Remove-TempTree $workDir
+    }
+}
+
+function Update-SponsorBlockIfPresent {
+    $scriptPath = Join-Path $InstallDir "scripts\sponsorblock.lua"
+    $sharedPath = Join-Path $InstallDir "scripts\sponsorblock_shared"
+    if (-not (Test-Path -LiteralPath $scriptPath) -and -not (Test-Path -LiteralPath $sharedPath)) {
+        Write-Warn "SponsorBlock is not installed; skipping optional update."
+        return
+    }
+
+    Write-Step "Updating installed SponsorBlock script"
+    $script = Update-ScriptFile "po5/mpv_sponsorblock" "sponsorblock.lua" "scripts\sponsorblock.lua"
+    Update-ScriptFile "po5/mpv_sponsorblock" "sponsorblock_shared/main.lua" "scripts\sponsorblock_shared\main.lua" | Out-Null
+    Update-ScriptFile "po5/mpv_sponsorblock" "sponsorblock_shared/sponsorblock.py" "scripts\sponsorblock_shared\sponsorblock.py" | Out-Null
+    Patch-SponsorBlockKeybinds $script
+}
+
+function Patch-SponsorBlockKeybinds {
+    param([Parameter(Mandatory)][string]$Path)
+
+    $content = Get-Content -LiteralPath $Path -Raw -Encoding UTF8
+    $replacements = @{
+        'mp.add_key_binding("g", "set_segment", set_segment)' = 'mp.add_key_binding(nil, "set_segment", set_segment)'
+        'mp.add_key_binding("G", "submit_segment", submit_segment)' = 'mp.add_key_binding(nil, "submit_segment", submit_segment)'
+        'mp.add_key_binding("h", "upvote_segment", function() return vote("1") end)' = 'mp.add_key_binding(nil, "upvote_segment", function() return vote("1") end)'
+        'mp.add_key_binding("H", "downvote_segment", function() return vote("0") end)' = 'mp.add_key_binding(nil, "downvote_segment", function() return vote("0") end)'
+    }
+
+    foreach ($old in $replacements.Keys) {
+        $content = $content.Replace($old, $replacements[$old])
+    }
+
+    Set-Content -LiteralPath $Path -Value $content -Encoding UTF8
+    Write-Ok "patched SponsorBlock key bindings to avoid Vim/memo conflicts"
+}
+
+function Repair-ConfigFolders {
+    Write-Step "Repairing local folders"
+    foreach ($path in @(
+        "cache",
+        "cache\watch_later",
+        "cache\shaders_cache",
+        "subtitles",
+        "script-opts",
+        "scripts"
+    )) {
+        $fullPath = Join-Path $InstallDir $path
+        if (-not (Test-Path -LiteralPath $fullPath)) {
+            New-Item -ItemType Directory -Path $fullPath | Out-Null
+            Write-Ok "created $path"
         }
     }
 }
 
-# --- Execution ---
+function Test-MpvConfig {
+    Write-Step "Checking mpv config"
+    $mpv = Get-MpvConsole
+    if (-not $mpv) {
+        Write-Warn "mpv binary was not found; config parse check skipped."
+        return
+    }
 
-Write-Host "Starting Comprehensive Update..." -ForegroundColor Cyan
+    $output = & $mpv --version 2>&1
+    $errors = $output | Select-String -Pattern "Error parsing option|setting option .* failed|Error loading script"
+    if ($errors) {
+        $errors | ForEach-Object { Write-Warn $_.Line }
+        throw "mpv reported config errors."
+    }
 
-Update-Mpv
-Update-YtDlp
-Update-Uosc
-Update-Thumbfast
-Update-Script-File "po5/memo" "memo.lua" "scripts\memo.lua"
-Update-Script-File "po5/evafast" "evafast.lua" "scripts\evafast.lua"
-Update-Script-File "mpv-player/mpv" "TOOLS/lua/autoload.lua" "scripts\autoload.lua"
-Update-Script-File "mpv-player/mpv" "TOOLS/lua/autodeint.lua" "scripts\autodeint.lua"
-
-if (Test-Path (Join-Path $install_dir "scripts\webtorrent.js")) {
-    Update-Script-File "mrxdst/webtorrent-mpv-hook" "webtorrent.js" "scripts\webtorrent.js"
+    Write-Ok ($output | Select-Object -First 1)
 }
 
-# --- Cleanup Legacy Files ---
-Write-Host "`n--- Cleaning up legacy files ---" -ForegroundColor Magenta
-$legacy_files = @(
-    "$install_dir\updater.bat",
-    "$install_dir\installer\updater.ps1",
-    "$install_dir\installer\smart_updater.ps1"
-)
+function Show-ToolStatus {
+    Write-Step "Checking helper tools"
+    $ffmpeg = Get-OptionalCommandPath @("ffmpeg")
+    $node = Get-OptionalCommandPath @("deno", "node", "bun", "qjs", "quickjs")
 
-foreach ($file in $legacy_files) {
-    if (Test-Path $file) {
-        Remove-Item $file -Force -ErrorAction SilentlyContinue
-        Write-Host "Removed legacy file: $file" -ForegroundColor DarkGray
+    if ($ffmpeg) {
+        Write-Ok "ffmpeg found: $ffmpeg"
+    } else {
+        Write-Warn "external ffmpeg not found; mpv playback still uses bundled FFmpeg libraries"
+    }
+
+    if ($node) {
+        Write-Ok "JavaScript runtime for yt-dlp found: $node"
+    } else {
+        Write-Warn "no JS runtime found; YouTube extraction can miss formats"
     }
 }
 
-# Remove installer directory if empty
-$installer_dir = "$install_dir\installer"
-if (Test-Path $installer_dir) {
-    if ((Get-ChildItem $installer_dir).Count -eq 0) {
-        Remove-Item $installer_dir -Force -ErrorAction SilentlyContinue
-        Write-Host "Removed empty legacy folder: $installer_dir" -ForegroundColor DarkGray
+try {
+    Write-Host "Target: $InstallDir" -ForegroundColor DarkGray
+    Repair-ConfigFolders
+    Show-ToolStatus
+    Update-YtDlp
+    Update-Mpv
+    Update-Uosc
+    Update-LuaScripts
+    Test-MpvConfig
+    Write-Host "`nAll requested updates completed." -ForegroundColor Cyan
+} catch {
+    Write-Host "`nUpdate failed: $($_.Exception.Message)" -ForegroundColor Red
+    exit 1
+} finally {
+    if (-not $NoPause -and $Host.Name -ne "ConsoleHost") {
+        Start-Sleep -Seconds 2
+    } elseif (-not $NoPause) {
+        Write-Host "Press any key to exit..."
+        $null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
     }
 }
-
-Write-Host "`nAll updates completed!" -ForegroundColor Cyan
-Write-Host "Press any key to exit..."
-$null = $Host.UI.RawUI.ReadKey("NoEcho,IncludeKeyDown")
