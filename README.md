@@ -9,6 +9,25 @@ Just my personal config files for use in [mpv](https://mpv.io/), a free, open-so
 
 Before installing, please take your time to read this whole README as common issues can be easily solved by simply reading carefully.
 
+## YouTube Queue Workflow
+
+Use `mpv <youtube-url>` from PowerShell as usual. The command now goes through `mpv-youtube.py`, starts `mpv.exe` detached, and returns the terminal immediately. If mpv is already open, another `mpv <youtube-url>` appends the video to the running playlist instead of starting a new player. You can also copy a YouTube URL and press `Ctrl+V` inside mpv to append it from the clipboard.
+
+The remaining YouTube queue is saved to `portable_config/cache/youtube-queue.m3u`. If mpv is closed accidentally, run `mpv` or `mpv <youtube-url>` again and the saved queue is restored. Watched videos are removed from that queue after normal playback reaches the end, and the queue file is deleted when nothing is left.
+
+This launcher is Python-based for cross-platform use:
+
+```powershell
+mpv https://youtu.be/example
+python .\mpv-youtube.py https://youtu.be/example
+```
+
+On Linux or macOS, use:
+
+```sh
+python3 ./mpv-youtube.py https://youtu.be/example
+```
+
 ## Scripts and Shaders
 
 - [uosc](https://github.com/darsain/uosc) - Adds a minimalist but highly customisable GUI.
