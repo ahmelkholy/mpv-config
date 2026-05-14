@@ -355,13 +355,52 @@ def youtube_queue_path(root: Path) -> Path:
     return default_config_dir(root) / "cache" / "youtube-queue.m3u"
 
 
+def watch_later_dir(root: Path) -> Path:
+    """Return mpv's saved watch-later/session state directory."""
+    return default_config_dir(root) / "cache" / "watch_later"
+
+
+def clear_watch_later(root: Path) -> int:
+    """Delete mpv watch-later state files without touching saved playlists."""
+    path = watch_later_dir(root)
+    if not path.exists():
+        return 0
+
+    removed = 0
+    for item in path.iterdir():
+        if item.is_file():
+            item.unlink()
+            removed += 1
+
+    return removed
+
+
+def clear_running_mpv_state(endpoint: str) -> bool:
+    """Clear live mpv playlist/session state through IPC when available."""
+    commands = (
+        ["script-message", "queue-clear"],
+        ["set", "save-position-on-quit", "no"],
+        ["delete-watch-later-config"],
+        ["playlist-clear"],
+        ["stop"],
+        ["show-text", "mpv YouTube buffer cleared", "2500"],
+    )
+    sent_any = False
+    for command in commands:
+        sent_any = send_ipc_command(endpoint, command) or sent_any
+
+    return sent_any
+
+
 def clear_youtube_queue(root: Path, ipc_name: str, dry_run: bool) -> int:
-    """Clear the saved and running YouTube queue."""
+    """Clear saved queue, watch-later state, and running mpv playlist buffer."""
     queue_path = youtube_queue_path(root)
+    state_dir = watch_later_dir(root)
     endpoint = ipc_endpoint(ipc_name)
 
     if dry_run:
         print(queue_path)
+        print(state_dir)
         print(endpoint)
         return 0
 
@@ -375,17 +414,25 @@ def clear_youtube_queue(root: Path, ipc_name: str, dry_run: bool) -> int:
         print(f"Could not delete {queue_path}: {error}", file=sys.stderr)
         return 1
 
-    cleared_running = send_ipc_command(endpoint, ["script-message", "queue-clear"])
+    try:
+        removed_watch_later = clear_watch_later(root)
+    except OSError as error:
+        print(f"Could not clear {state_dir}: {error}", file=sys.stderr)
+        return 1
+
+    cleared_running = clear_running_mpv_state(endpoint)
 
     if removed_file:
         print(f"Deleted saved YouTube queue: {queue_path}")
     else:
         print("No saved YouTube queue file was present.")
 
+    print(f"Deleted {removed_watch_later} mpv watch-later state file(s).")
+
     if cleared_running:
-        print("Cleared running mpv YouTube queue.")
+        print("Cleared running mpv playlist buffer.")
     else:
-        print("No running mpv YouTube IPC queue was found.")
+        print("No running mpv IPC instance was found.")
 
     return 0
 

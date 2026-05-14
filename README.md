@@ -27,7 +27,7 @@ mpv clear
 ```
 
 `--save-playlist` creates `PlayList\Halak Radio.m3u` and exits. It only saves YouTube playlist/radio URLs; single video links are not written as playlist files.
-`mpv clear` removes the saved YouTube queue and asks the running mpv instance to drop queued YouTube URLs.
+`mpv clear` removes mpv's remembered YouTube/session buffer (`cache\youtube-queue.m3u` and `cache\watch_later\*`) and asks the running mpv instance to drop its loaded playlist. It does not delete playlists saved under `PlayList\`. Existing mpv windows opened before this config gained an IPC pipe must be closed once before PowerShell can control their live playlist.
 
 On Linux or macOS, use:
 
