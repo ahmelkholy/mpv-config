@@ -13,3 +13,7 @@ portable_config/installer/mpv.exe
 .venv/
 /portable_config/cache/
 /portable_config/memo-history.log
+/.lua-language-server-log/
+/.ruff_cache/
+/__pycache__/
+/.vscode/

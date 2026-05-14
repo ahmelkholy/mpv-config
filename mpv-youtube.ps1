@@ -1,28 +1,6 @@
-[CmdletBinding(PositionalBinding = $false)]
 param(
-    [ValidateSet(720, 1080, 1440, 2160, 4320)]
-    [int]$Height = 2160,
-
-    [string]$CookiesFromBrowser = "",
-
-    [int]$PlaylistLimit = 0,
-
-    [string]$SavePlaylist = "",
-
-    [string]$PlaylistDir = "",
-
-    [switch]$NoUpdate,
-
-    [switch]$DryRun,
-
-    [switch]$Wait,
-
-    [string]$IpcName = "mpv-youtube-queue",
-
-    [string[]]$MpvArgs = @(),
-
     [Parameter(ValueFromRemainingArguments = $true)]
-    [string[]]$RemainingArgs = @()
+    [string[]]$Arguments = @()
 )
 
 Set-StrictMode -Version Latest
@@ -48,60 +26,12 @@ $PythonPrefixArgs = @()
 if ($Python.Name -match '^py(\.exe)?$') {
     $PythonPrefixArgs += "-3"
 }
+
 $PythonCommand = if ($Python.CommandType -eq "Application") {
     $Python.Source
 } else {
     $Python.Name
 }
 
-if (-not $SavePlaylist -and $RemainingArgs.Count -ge 2) {
-    $FirstArg = $RemainingArgs[0]
-    $HasPlaylistUrl = $false
-
-    foreach ($Item in $RemainingArgs[1..($RemainingArgs.Count - 1)]) {
-        if ($Item -match '^https?://.*(?:[?&]list=|youtube\.com/(?:playlist|.*[?&]list=)|music\.youtube\.com/(?:playlist|.*[?&]list=))') {
-            $HasPlaylistUrl = $true
-            break
-        }
-    }
-
-    if (
-        $HasPlaylistUrl -and
-        $FirstArg -notmatch '^https?://' -and
-        -not (Test-Path -LiteralPath $FirstArg)
-    ) {
-        $SavePlaylist = $FirstArg
-        $RemainingArgs = @($RemainingArgs | Select-Object -Skip 1)
-    }
-}
-
-$LauncherArgs = @(
-    $PythonLauncher,
-    "--height", $Height,
-    "--playlist-limit", $PlaylistLimit,
-    "--ipc-name", $IpcName
-)
-
-if ($CookiesFromBrowser) {
-    $LauncherArgs += @("--cookies-from-browser", $CookiesFromBrowser)
-}
-if ($SavePlaylist) {
-    $LauncherArgs += @("--save-playlist", $SavePlaylist)
-}
-if ($PlaylistDir) {
-    $LauncherArgs += @("--playlist-dir", $PlaylistDir)
-}
-if ($NoUpdate) {
-    $LauncherArgs += "--no-update"
-}
-if ($DryRun) {
-    $LauncherArgs += "--dry-run"
-}
-if ($Wait) {
-    $LauncherArgs += "--wait"
-}
-
-$LauncherArgs += @($MpvArgs) + @($RemainingArgs)
-
-& $PythonCommand @PythonPrefixArgs @LauncherArgs
+& $PythonCommand @PythonPrefixArgs $PythonLauncher @Arguments
 exit $LASTEXITCODE

@@ -537,6 +537,23 @@ def save_youtube_playlist(
     return 0
 
 
+def infer_playlist_save(
+    launch_args: Sequence[str],
+) -> tuple[str, list[str]] | None:
+    """Infer `name + playlist URL` as a request to save an m3u file."""
+    if len(launch_args) < 2:
+        return None
+
+    name = launch_args[0]
+    if is_url(name) or Path(name).exists():
+        return None
+
+    if not any(is_youtube_playlist_url(item) for item in launch_args[1:]):
+        return None
+
+    return name, list(launch_args[1:])
+
+
 def build_mpv_args(
     config_dir: Path,
     endpoint: str,
@@ -621,6 +638,441 @@ def update_yt_dlp(yt_dlp: str | None) -> None:
     subprocess.call([yt_dlp, "-U"])
 
 
+def repair_config_folders(install_dir: Path) -> None:
+    """Create local mpv folders expected by the portable config."""
+    print_step("Repairing local folders")
+    for relative in (
+        "cache",
+        "cache/watch_later",
+        "cache/shaders_cache",
+        "subtitles",
+        "script-opts",
+        "scripts",
+    ):
+        path = install_dir / relative
+        if not path.exists():
+            path.mkdir(parents=True, exist_ok=True)
+            print_ok(f"created {relative}")
+
+
+def show_tool_status() -> None:
+    """Print helper tool availability."""
+    print_step("Checking helper tools")
+    ffmpeg = find_first_executable(["ffmpeg"])
+    runtime = find_first_executable(["deno", "node", "bun", "qjs", "quickjs"])
+
+    if ffmpeg:
+        print_ok(f"ffmpeg found: {ffmpeg}")
+    else:
+        print_warn("external ffmpeg not found; mpv still uses bundled FFmpeg")
+
+    if runtime:
+        print_ok(f"JavaScript runtime for yt-dlp found: {runtime}")
+    else:
+        print_warn("no JS runtime found; YouTube extraction can miss formats")
+
+
+def install_or_update_yt_dlp(install_dir: Path) -> None:
+    """Install yt-dlp if needed, then run its built-in updater."""
+    print_step("Updating yt-dlp")
+    exe = install_dir / ("yt-dlp.exe" if is_windows() else "yt-dlp")
+
+    if not exe.exists():
+        release = github_latest_release("yt-dlp/yt-dlp")
+        asset_name = "yt-dlp.exe" if is_windows() else "yt-dlp"
+        asset = find_release_asset(release, asset_name)
+        if not asset:
+            raise RuntimeError(f"{asset_name} asset was not found")
+        download_file(asset_download_url(asset), exe)
+        if not is_windows():
+            exe.chmod(0o755)
+        print_ok(f"installed {asset_name}")
+
+    run_process([exe, "-U"], check=True)
+    version = run_process([exe, "--version"], check=True, capture=True)
+    print_ok(f"yt-dlp {(version.stdout or '').strip()}")
+
+
+def is_mpv_running() -> bool:
+    """Return True when an mpv process is currently running."""
+    if is_windows():
+        result = run_process(
+            ["tasklist", "/FI", "IMAGENAME eq mpv.exe", "/NH"],
+            capture=True,
+        )
+        return "mpv.exe" in (result.stdout or "").lower()
+
+    result = run_process(["pgrep", "-x", "mpv"], capture=True)
+    return result.returncode == 0
+
+
+def stop_mpv_for_update(force_close: bool) -> bool:
+    """Stop mpv when requested before replacing mpv binaries."""
+    if not is_mpv_running():
+        return True
+
+    if not force_close:
+        print_warn("mpv is running. Close it or use --force-close-mpv.")
+        return False
+
+    if is_windows():
+        run_process(["taskkill", "/IM", "mpv.exe", "/F"], capture=True)
+    else:
+        run_process(["pkill", "-x", "mpv"], capture=True)
+
+    time.sleep(1)
+    return not is_mpv_running()
+
+
+def mpv_console_candidates(root: Path, install_dir: Path) -> list[Path | str]:
+    """Return mpv executable candidates in preferred order."""
+    if is_windows():
+        names = ("mpv.com", "mpv.exe")
+    else:
+        names = ("mpv",)
+
+    candidates: list[Path | str] = []
+    for base in (install_dir, root):
+        candidates.extend(base / name for name in names)
+    candidates.extend(names)
+    return candidates
+
+
+def find_mpv_console(root: Path, install_dir: Path) -> str | None:
+    """Find an mpv executable suitable for console checks."""
+    for candidate in mpv_console_candidates(root, install_dir):
+        if isinstance(candidate, Path) and candidate.exists():
+            return str(candidate)
+        if isinstance(candidate, str):
+            resolved = shutil.which(candidate)
+            if resolved:
+                return resolved
+    return None
+
+
+def ensure_7zr(install_dir: Path) -> Path:
+    """Ensure the standalone 7zr extractor exists."""
+    exe = install_dir / "7z" / "7zr.exe"
+    if not exe.exists():
+        print_step("Installing 7zr extractor")
+        download_file("https://www.7-zip.org/a/7zr.exe", exe)
+    return exe
+
+
+def extract_archive(archive: Path, destination: Path, install_dir: Path) -> None:
+    """Extract zip or 7z archives."""
+    destination.mkdir(parents=True, exist_ok=True)
+    if archive.suffix.lower() == ".zip":
+        with zipfile.ZipFile(archive) as zip_file:
+            zip_file.extractall(destination)
+        return
+
+    seven_zip = ensure_7zr(install_dir)
+    run_process([seven_zip, "x", "-y", f"-o{destination}", archive], check=True)
+
+
+def latest_mpv_download_url() -> tuple[str, str]:
+    """Return the latest Windows mpv archive URL and filename."""
+    rss_text = read_url_text(
+        "https://sourceforge.net/projects/mpv-player-windows/rss?path=/64bit"
+    )
+    rss = ElementTree.fromstring(rss_text)
+    item = rss.find("./channel/item")
+    if item is None:
+        raise RuntimeError("Could not read mpv release feed")
+
+    link = item.findtext("link", default="").strip()
+    if not link:
+        raise RuntimeError("Latest mpv release link was empty")
+
+    parts = [part for part in link.split("/") if part]
+    filename = parts[-2] if parts and parts[-1] == "download" else parts[-1]
+    return f"https://download.sourceforge.net/mpv-player-windows/{filename}", filename
+
+
+def update_mpv(root: Path, install_dir: Path, force_close: bool) -> None:
+    """Download and extract the latest Windows mpv build."""
+    if not is_windows():
+        print_warn("automatic mpv binary update is only implemented on Windows")
+        return
+
+    print_step("Updating mpv")
+    if not stop_mpv_for_update(force_close):
+        return
+
+    download_url, filename = latest_mpv_download_url()
+    archive = install_dir / filename
+    download_file(download_url, archive)
+    try:
+        extract_archive(archive, install_dir, install_dir)
+    finally:
+        archive.unlink(missing_ok=True)
+
+    mpv = find_mpv_console(root, install_dir)
+    if mpv:
+        version = run_process([mpv, "--version"], capture=True)
+        first_line = (version.stdout or version.stderr or "").splitlines()[0]
+        print_ok(first_line)
+    else:
+        print_warn("mpv binary was not found after extraction")
+
+
+def raw_github_file_url(repo: str, path: str) -> str:
+    """Return a raw GitHub URL for the first branch containing a path."""
+    for branch in ("master", "main"):
+        url = f"https://raw.githubusercontent.com/{repo}/{branch}/{path}"
+        try:
+            with urllib.request.urlopen(request_url(url, "HEAD"), timeout=30):
+                return url
+        except urllib.error.URLError:
+            continue
+    raise RuntimeError(f"Could not locate {path} in {repo}")
+
+
+def backup_file(install_dir: Path, path: Path) -> None:
+    """Back up a file under cache/update-backups before replacing it."""
+    if not path.exists():
+        return
+
+    try:
+        relative = path.resolve().relative_to(install_dir.resolve())
+    except ValueError:
+        relative = Path(path.name)
+
+    stamp = time.strftime("%Y%m%d-%H%M%S")
+    backup_path = install_dir / "cache" / "update-backups" / stamp / relative
+    backup_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, backup_path)
+
+
+def update_script_file(
+    install_dir: Path,
+    repo: str,
+    remote_path: str,
+    local_path: str,
+) -> Path:
+    """Download one Lua/Python script from GitHub."""
+    destination = install_dir / Path(local_path)
+    url = raw_github_file_url(repo, remote_path)
+    backup_file(install_dir, destination)
+    download_file(url, destination)
+    print_ok(local_path)
+    return destination
+
+
+def patch_thumbfast_portable_path(path: Path) -> None:
+    """Patch thumbfast so it can find the portable mpv binary."""
+    content = path.read_text(encoding="utf-8")
+    needle = 'mp.options.read_options(options, "thumbfast")'
+    if "Portable mpv path detection" in content:
+        return
+    if needle not in content:
+        print_warn("thumbfast portable path patch anchor was not found")
+        return
+
+    patch = r'''
+
+-- Portable mpv path detection.
+if options.mpv_path == "mpv" then
+    for _, candidate in ipairs({"~~/mpv.exe", "~~/mpv.com", "~~/../mpv.exe", "~~/../mpv.com"}) do
+        local path = mp.command_native({"expand-path", candidate})
+        local info = mp.utils.file_info(path)
+        if info and info.is_file then
+            options.mpv_path = path:gsub("\\", "/")
+            break
+        end
+    end
+end
+'''
+    path.write_text(content.replace(needle, needle + patch), encoding="utf-8")
+    print_ok("patched thumbfast portable mpv path")
+
+
+def update_lua_scripts(install_dir: Path) -> None:
+    """Update selected mpv Lua scripts."""
+    print_step("Updating selected Lua scripts")
+    thumbfast = update_script_file(
+        install_dir,
+        "po5/thumbfast",
+        "thumbfast.lua",
+        "scripts/thumbfast.lua",
+    )
+    patch_thumbfast_portable_path(thumbfast)
+
+    for repo, remote_path, local_path in SCRIPT_UPDATES:
+        update_script_file(install_dir, repo, remote_path, local_path)
+
+    update_sponsorblock_if_present(install_dir)
+
+
+def find_uosc_source(work_dir: Path) -> Path:
+    """Find scripts/uosc inside an extracted uosc archive."""
+    for path in work_dir.rglob("uosc"):
+        if path.is_dir() and path.parent.name == "scripts":
+            return path
+    raise RuntimeError("uosc archive did not contain scripts/uosc")
+
+
+def update_uosc(install_dir: Path) -> None:
+    """Update uosc while preserving local script options."""
+    print_step("Updating uosc without touching settings")
+    release = github_latest_release("tomasklaen/uosc")
+    asset = find_release_asset(release, lambda name: name.endswith(".zip"))
+    if not asset:
+        raise RuntimeError("Could not find uosc zip asset in latest release")
+
+    with tempfile.TemporaryDirectory(prefix="mpv-uosc-") as temp_dir:
+        work_dir = Path(temp_dir)
+        archive = work_dir / "uosc.zip"
+        download_file(asset_download_url(asset), archive)
+        extract_archive(archive, work_dir, install_dir)
+
+        source_uosc = find_uosc_source(work_dir)
+        destination = install_dir / "scripts" / "uosc"
+        if destination.exists():
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            backup = install_dir / "cache" / "update-backups" / stamp / "scripts"
+            backup.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(destination, backup / "uosc", dirs_exist_ok=True)
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copytree(source_uosc, destination, dirs_exist_ok=True)
+
+        fonts_dir = install_dir / "fonts"
+        fonts_dir.mkdir(parents=True, exist_ok=True)
+        for font in ("uosc_icons.otf", "uosc_textures.ttf"):
+            source_font = next(work_dir.rglob(font), None)
+            if source_font:
+                shutil.copy2(source_font, fonts_dir / font)
+
+    print_ok("uosc updated; script-opts/uosc.conf was preserved")
+
+
+def patch_sponsorblock_lua(path: Path) -> None:
+    """Apply local SponsorBlock Lua compatibility patches."""
+    content = path.read_text(encoding="utf-8")
+    replacements = {
+        'mp.add_key_binding("g", "set_segment", set_segment)':
+            'mp.add_key_binding(nil, "set_segment", set_segment)',
+        'mp.add_key_binding("G", "submit_segment", submit_segment)':
+            'mp.add_key_binding(nil, "submit_segment", submit_segment)',
+        'mp.add_key_binding("h", "upvote_segment", function() return vote("1") end)':
+            'mp.add_key_binding(nil, "upvote_segment", function() return vote("1") end)',
+        'mp.add_key_binding("H", "downvote_segment", function() return vote("0") end)':
+            'mp.add_key_binding(nil, "downvote_segment", function() return vote("0") end)',
+        "local speed_timer = nil\nlocal fade_timer = nil":
+            "---@type any\nlocal speed_timer = nil\n---@type any\nlocal fade_timer = nil",
+        "        speed_timer:kill()":
+            "        if speed_timer ~= nil then speed_timer:kill() end",
+        'youtube_id = youtube_id or string.match(video_path, options.local_pattern)':
+            'youtube_id = youtube_id or string.match(video_path, options["local_pattern"])',
+        "if not youtube_id or string.len(youtube_id) < 11 or "
+        "(local_pattern and string.len(youtube_id) ~= 11) then return end":
+            "if not youtube_id or string.len(youtube_id) < 11 or "
+            '(options["local_pattern"] ~= "" and string.len(youtube_id) ~= 11) then return end',
+        'local cur_time = os.time(os.date("*t"))':
+            "local cur_time = os.time()",
+    }
+    for old, new in replacements.items():
+        content = content.replace(old, new)
+    path.write_text(content, encoding="utf-8")
+    print_ok("patched SponsorBlock compatibility fixes")
+
+
+def patch_sponsorblock_python(path: Path) -> None:
+    """Apply local SponsorBlock Python compatibility patches."""
+    content = path.read_text(encoding="utf-8")
+    if "import urllib.request" not in content:
+        content = content.replace(
+            "import urllib.parse\n",
+            "import urllib.parse\nimport urllib.request\n",
+        )
+    replacements = {
+        "except (TimeoutError, urllib.error.URLError) as e:":
+            "except (TimeoutError, urllib.error.URLError):",
+        "    except:":
+            "    except Exception:",
+    }
+    for old, new in replacements.items():
+        content = content.replace(old, new)
+    path.write_text(content, encoding="utf-8")
+    print_ok("patched SponsorBlock Python compatibility fixes")
+
+
+def update_sponsorblock_if_present(install_dir: Path) -> None:
+    """Update SponsorBlock files only when the script is installed."""
+    script_path = install_dir / "scripts" / "sponsorblock.lua"
+    shared_path = install_dir / "scripts" / "sponsorblock_shared"
+    if not script_path.exists() and not shared_path.exists():
+        print_warn("SponsorBlock is not installed; skipping optional update")
+        return
+
+    print_step("Updating installed SponsorBlock script")
+    script = update_script_file(
+        install_dir,
+        "po5/mpv_sponsorblock",
+        "sponsorblock.lua",
+        "scripts/sponsorblock.lua",
+    )
+    update_script_file(
+        install_dir,
+        "po5/mpv_sponsorblock",
+        "sponsorblock_shared/main.lua",
+        "scripts/sponsorblock_shared/main.lua",
+    )
+    python_script = update_script_file(
+        install_dir,
+        "po5/mpv_sponsorblock",
+        "sponsorblock_shared/sponsorblock.py",
+        "scripts/sponsorblock_shared/sponsorblock.py",
+    )
+    patch_sponsorblock_lua(script)
+    patch_sponsorblock_python(python_script)
+
+
+def test_mpv_config(root: Path, install_dir: Path) -> None:
+    """Run a light mpv config check."""
+    print_step("Checking mpv config")
+    mpv = find_mpv_console(root, install_dir)
+    if not mpv:
+        print_warn("mpv binary was not found; config parse check skipped")
+        return
+
+    result = run_process([mpv, "--version"], capture=True)
+    output = f"{result.stdout or ''}{result.stderr or ''}"
+    for line in output.splitlines():
+        if (
+            "Error parsing option" in line
+            or "setting option" in line and "failed" in line
+            or "Error loading script" in line
+        ):
+            print_warn(line)
+            raise RuntimeError("mpv reported config errors")
+
+    first_line = output.splitlines()[0] if output.splitlines() else mpv
+    print_ok(first_line)
+
+
+def run_update(root: Path, args: argparse.Namespace) -> int:
+    """Run the consolidated updater."""
+    install_dir = default_config_dir(root)
+    print(f"Target: {install_dir}")
+    repair_config_folders(install_dir)
+    show_tool_status()
+    install_or_update_yt_dlp(install_dir)
+
+    if not args.yt_dlp_only:
+        if not args.skip_mpv:
+            update_mpv(root, install_dir, args.force_close_mpv)
+        if not args.skip_scripts:
+            update_uosc(install_dir)
+            update_lua_scripts(install_dir)
+
+    test_mpv_config(root, install_dir)
+    print("\nAll requested updates completed.")
+    return 0
+
+
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
@@ -656,6 +1108,36 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Directory for --save-playlist output. Defaults to ./PlayList.",
     )
     parser.add_argument(
+        "--update",
+        action="store_true",
+        help="Update yt-dlp, mpv, and selected bundled scripts, then exit.",
+    )
+    parser.add_argument(
+        "--yt-dlp-only",
+        action="store_true",
+        help="With --update, update only yt-dlp.",
+    )
+    parser.add_argument(
+        "--skip-mpv",
+        action="store_true",
+        help="With --update, skip the mpv binary update.",
+    )
+    parser.add_argument(
+        "--skip-scripts",
+        action="store_true",
+        help="With --update, skip bundled Lua script updates.",
+    )
+    parser.add_argument(
+        "--force-close-mpv",
+        action="store_true",
+        help="With --update, close running mpv processes before updating mpv.",
+    )
+    parser.add_argument(
+        "--no-pause",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--no-update",
         action="store_true",
         help="Skip foreground yt-dlp update checks.",
@@ -681,7 +1163,7 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         default=None,
         help="Path to a specific mpv executable.",
     )
-    namespace, mpv_args = parser.parse_known_args(argv)
+    namespace, mpv_args = parser.parse_known_args(normalize_cli_args(argv))
     if mpv_args and mpv_args[0] == "--":
         mpv_args = mpv_args[1:]
     namespace.mpv_args = mpv_args
@@ -695,6 +1177,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     config_dir = default_config_dir(root)
     yt_dlp = find_yt_dlp(config_dir)
     launch_args = list(args.mpv_args)
+
+    if args.update:
+        try:
+            return run_update(root, args)
+        except Exception as error:
+            print(f"\nUpdate failed: {error}", file=sys.stderr)
+            return 1
+
+    if not args.save_playlist:
+        inferred_save = infer_playlist_save(launch_args)
+        if inferred_save:
+            args.save_playlist, launch_args = inferred_save
+
     youtube_url = first_youtube_url(launch_args)
 
     if args.save_playlist:
