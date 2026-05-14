@@ -23,9 +23,11 @@ python .\mpv-youtube.py https://youtu.be/example
 python .\mpv-youtube.py --playlist-limit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
 python .\mpv-youtube.py --save-playlist "Halak Radio" --playlist-limit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
 .\mpv-youtube.ps1 "Halak Radio" -PlaylistLimit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
+mpv clear
 ```
 
 `--save-playlist` creates `PlayList\Halak Radio.m3u` and exits. It only saves YouTube playlist/radio URLs; single video links are not written as playlist files.
+`mpv clear` removes the saved YouTube queue and asks the running mpv instance to drop queued YouTube URLs.
 
 On Linux or macOS, use:
 

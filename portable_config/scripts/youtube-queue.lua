@@ -314,6 +314,7 @@ local function append_urls(urls)
 
     for _, url in ipairs(urls) do
         if should_persist(url) then
+            completed[url] = nil
             mp.commandv("loadfile", url, "append-play")
             added = added + 1
         end
@@ -427,8 +428,31 @@ local function paste_url()
 end
 
 local function clear_queue()
+    restoring = true
     completed = {}
+
+    local playlist = mp.get_property_native("playlist") or {}
+    local pos = mp.get_property_number("playlist-pos", -1)
+    for index = #playlist, 1, -1 do
+        local entry = playlist[index]
+        local filename = entry and entry.filename
+        local zero_index = index - 1
+
+        if should_persist(filename) then
+            completed[filename] = true
+            if zero_index ~= pos then
+                mp.commandv("playlist-remove", tostring(zero_index))
+            end
+        end
+    end
+
+    local path = current_path or mp.get_property("path", "")
+    if should_persist(path) then
+        completed[path] = true
+    end
+
     write_queue({})
+    restoring = false
     mp.osd_message("YouTube queue cleared", 2)
 end
 

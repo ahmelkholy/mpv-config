@@ -37,6 +37,8 @@ SCRIPT_UPDATES = (
 )
 PS_OPTION_ALIASES = {
     "cookiesfrombrowser": "--cookies-from-browser",
+    "clearyoutubequeue": "--clear-youtube-queue",
+    "clearqueue": "--clear-youtube-queue",
     "dryrun": "--dry-run",
     "forceclosempv": "--force-close-mpv",
     "height": "--height",
@@ -52,6 +54,12 @@ PS_OPTION_ALIASES = {
     "update": "--update",
     "wait": "--wait",
     "ytdlponly": "--yt-dlp-only",
+}
+CLEAR_QUEUE_COMMANDS = {
+    "clear",
+    "clear-queue",
+    "clear-youtube",
+    "clear-youtube-queue",
 }
 
 
@@ -342,6 +350,46 @@ def send_media_to_running_mpv(endpoint: str, media: Sequence[str]) -> bool:
     return sent_any
 
 
+def youtube_queue_path(root: Path) -> Path:
+    """Return the persistent YouTube queue file path."""
+    return default_config_dir(root) / "cache" / "youtube-queue.m3u"
+
+
+def clear_youtube_queue(root: Path, ipc_name: str, dry_run: bool) -> int:
+    """Clear the saved and running YouTube queue."""
+    queue_path = youtube_queue_path(root)
+    endpoint = ipc_endpoint(ipc_name)
+
+    if dry_run:
+        print(queue_path)
+        print(endpoint)
+        return 0
+
+    removed_file = False
+    try:
+        queue_path.unlink()
+        removed_file = True
+    except FileNotFoundError:
+        pass
+    except OSError as error:
+        print(f"Could not delete {queue_path}: {error}", file=sys.stderr)
+        return 1
+
+    cleared_running = send_ipc_command(endpoint, ["script-message", "queue-clear"])
+
+    if removed_file:
+        print(f"Deleted saved YouTube queue: {queue_path}")
+    else:
+        print("No saved YouTube queue file was present.")
+
+    if cleared_running:
+        print("Cleared running mpv YouTube queue.")
+    else:
+        print("No running mpv YouTube IPC queue was found.")
+
+    return 0
+
+
 def format_for_height(height: int) -> str:
     """Return the yt-dlp format selector for a maximum video height."""
     return f"bv*[height<={height}]+ba/b[height<={height}]/bv*+ba/b"
@@ -552,6 +600,11 @@ def infer_playlist_save(
         return None
 
     return name, list(launch_args[1:])
+
+
+def is_clear_queue_request(launch_args: Sequence[str]) -> bool:
+    """Return True for shorthand commands that clear the YouTube queue."""
+    return len(launch_args) == 1 and launch_args[0].lower() in CLEAR_QUEUE_COMMANDS
 
 
 def build_mpv_args(
@@ -1108,6 +1161,11 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Directory for --save-playlist output. Defaults to ./PlayList.",
     )
     parser.add_argument(
+        "--clear-youtube-queue",
+        action="store_true",
+        help="Clear the saved YouTube queue and queued YouTube items in mpv.",
+    )
+    parser.add_argument(
         "--update",
         action="store_true",
         help="Update yt-dlp, mpv, and selected bundled scripts, then exit.",
@@ -1184,6 +1242,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         except Exception as error:
             print(f"\nUpdate failed: {error}", file=sys.stderr)
             return 1
+
+    if args.clear_youtube_queue or is_clear_queue_request(launch_args):
+        return clear_youtube_queue(root, args.ipc_name, args.dry_run)
 
     if not args.save_playlist:
         inferred_save = infer_playlist_save(launch_args)
