@@ -13,17 +13,46 @@ import subprocess
 import sys
 import tempfile
 import time
+import urllib.error
+import urllib.request
+import zipfile
 from pathlib import Path
 from typing import Iterable, Sequence
 from urllib.parse import parse_qs, urlparse
+from xml.etree import ElementTree
 
 
 HEIGHTS = (720, 1080, 1440, 2160, 4320)
+USER_AGENT = "mpv-portable-updater"
 YOUTUBE_HOST_MARKERS = (
     "youtube.com/",
     "youtu.be/",
     "music.youtube.com/",
 )
+SCRIPT_UPDATES = (
+    ("po5/memo", "memo.lua", "scripts/memo.lua"),
+    ("po5/evafast", "evafast.lua", "scripts/evafast.lua"),
+    ("mpv-player/mpv", "TOOLS/lua/autoload.lua", "scripts/autoload.lua"),
+    ("mpv-player/mpv", "TOOLS/lua/autodeint.lua", "scripts/autodeint.lua"),
+)
+PS_OPTION_ALIASES = {
+    "cookiesfrombrowser": "--cookies-from-browser",
+    "dryrun": "--dry-run",
+    "forceclosempv": "--force-close-mpv",
+    "height": "--height",
+    "ipcname": "--ipc-name",
+    "mpv": "--mpv",
+    "nopause": "--no-pause",
+    "noupdate": "--no-update",
+    "playlistdir": "--playlist-dir",
+    "playlistlimit": "--playlist-limit",
+    "saveplaylist": "--save-playlist",
+    "skipmpv": "--skip-mpv",
+    "skipscripts": "--skip-scripts",
+    "update": "--update",
+    "wait": "--wait",
+    "ytdlponly": "--yt-dlp-only",
+}
 
 
 def is_windows() -> bool:
@@ -68,6 +97,15 @@ def first_youtube_url(values: Iterable[str]) -> str | None:
     return None
 
 
+def first_youtube_playlist_url(values: Iterable[str]) -> str | None:
+    """Return the first YouTube playlist/radio URL from an argument list."""
+    for value in values:
+        if is_youtube_playlist_url(value):
+            return value
+
+    return None
+
+
 def find_first_executable(names: Sequence[str]) -> str | None:
     """Return the first executable found in PATH."""
     for name in names:
@@ -90,6 +128,120 @@ def default_config_dir(root: Path) -> Path:
         return portable_config
 
     return root
+
+
+def normalize_cli_args(argv: Sequence[str]) -> list[str]:
+    """Accept common PowerShell-style single-dash option names."""
+    normalized: list[str] = []
+    for item in argv:
+        if item.startswith("-") and not item.startswith("--"):
+            alias = PS_OPTION_ALIASES.get(item.lstrip("-").lower())
+            normalized.append(alias or item)
+        else:
+            normalized.append(item)
+
+    return normalized
+
+
+def print_step(message: str) -> None:
+    """Print a visible updater step."""
+    print(f"\n==> {message}")
+
+
+def print_ok(message: str) -> None:
+    """Print a successful updater line."""
+    print(f"OK  {message}")
+
+
+def print_warn(message: str) -> None:
+    """Print a warning updater line."""
+    print(f"WARN {message}")
+
+
+def request_url(url: str, method: str = "GET") -> urllib.request.Request:
+    """Build an HTTP request with the updater user agent."""
+    return urllib.request.Request(
+        url,
+        method=method,
+        headers={"User-Agent": USER_AGENT},
+    )
+
+
+def read_url_text(url: str) -> str:
+    """Read a URL as UTF-8 text."""
+    with urllib.request.urlopen(request_url(url), timeout=60) as response:
+        return response.read().decode("utf-8", errors="replace")
+
+
+def read_url_json(url: str) -> object:
+    """Read a URL and parse its JSON response."""
+    return json.loads(read_url_text(url))
+
+
+def download_file(url: str, destination: Path) -> None:
+    """Download a URL to a local path."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with urllib.request.urlopen(request_url(url), timeout=120) as response:
+        with destination.open("wb") as file:
+            shutil.copyfileobj(response, file)
+
+
+def run_process(
+    args: Sequence[str | Path],
+    *,
+    check: bool = False,
+    capture: bool = False,
+) -> subprocess.CompletedProcess[str]:
+    """Run a subprocess with consistent string conversion."""
+    result = subprocess.run(
+        [str(arg) for arg in args],
+        check=False,
+        capture_output=capture,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    if check and result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        raise RuntimeError(detail or f"command failed: {args[0]}")
+    return result
+
+
+def github_latest_release(repo: str) -> dict[str, object]:
+    """Return the latest GitHub release JSON for a repository."""
+    data = read_url_json(f"https://api.github.com/repos/{repo}/releases/latest")
+    if not isinstance(data, dict):
+        raise RuntimeError(f"Unexpected GitHub release response for {repo}")
+    return data
+
+
+def find_release_asset(
+    release: dict[str, object],
+    predicate: object,
+) -> dict[str, object] | None:
+    """Return the first release asset matching a predicate."""
+    assets = release.get("assets", [])
+    if not isinstance(assets, list):
+        return None
+
+    for asset in assets:
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name", ""))
+        if callable(predicate) and predicate(name):
+            return asset
+        if isinstance(predicate, str) and name == predicate:
+            return asset
+
+    return None
+
+
+def asset_download_url(asset: dict[str, object]) -> str:
+    """Return an asset browser download URL or raise."""
+    url = asset.get("browser_download_url")
+    if not isinstance(url, str) or not url:
+        raise RuntimeError("Release asset has no browser download URL")
+    return url
 
 
 def find_mpv(root: Path, mpv_path: str | None) -> str:
@@ -316,6 +468,75 @@ def expand_launch_args(
     return expanded
 
 
+def sanitize_playlist_name(name: str) -> str:
+    """Return a safe filename stem for a saved playlist."""
+    sanitized = "".join(
+        " " if char in '<>:"/\\|?*' or ord(char) < 32 else char
+        for char in name
+    )
+    sanitized = " ".join(sanitized.split()).strip(" .")
+    return sanitized or "YouTube Playlist"
+
+
+def saved_playlist_path(root: Path, playlist_dir: str | None, name: str) -> Path:
+    """Return the target m3u path for a saved playlist name."""
+    base_dir = Path(playlist_dir).expanduser() if playlist_dir else root / "PlayList"
+    if not base_dir.is_absolute():
+        base_dir = root / base_dir
+
+    filename = sanitize_playlist_name(name)
+    if Path(filename).suffix.lower() not in {".m3u", ".m3u8"}:
+        filename += ".m3u"
+
+    return base_dir / filename
+
+
+def write_m3u(path: Path, entries: Sequence[str]) -> None:
+    """Write entries as an extended m3u file."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    content = "#EXTM3U\n" + "\n".join(entries) + "\n"
+    path.write_text(content, encoding="utf-8", newline="\n")
+
+
+def save_youtube_playlist(
+    name: str,
+    playlist_dir: str | None,
+    launch_args: Sequence[str],
+    root: Path,
+    yt_dlp: str | None,
+    playlist_limit: int,
+    dry_run: bool,
+) -> int:
+    """Save a YouTube playlist/radio URL to PlayList/NAME.m3u."""
+    url = first_youtube_playlist_url(launch_args)
+    if not url:
+        print(
+            "No YouTube playlist/radio URL found. Single video URLs are not saved.",
+            file=sys.stderr,
+        )
+        return 2
+
+    if not yt_dlp:
+        print("yt-dlp was not found. Cannot save the playlist.", file=sys.stderr)
+        return 1
+
+    entries = expand_youtube_playlist(url, yt_dlp, playlist_limit)
+    if not entries or entries == [url]:
+        print("Could not expand the YouTube playlist/radio URL.", file=sys.stderr)
+        return 1
+
+    path = saved_playlist_path(root, playlist_dir, name)
+    if dry_run:
+        print(path)
+        for entry in entries:
+            print(entry)
+        return 0
+
+    write_m3u(path, entries)
+    print(f"Saved {len(entries)} item(s) to {path}")
+    return 0
+
+
 def build_mpv_args(
     config_dir: Path,
     endpoint: str,
@@ -424,6 +645,17 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Maximum YouTube playlist/radio items to add; 0 means all available.",
     )
     parser.add_argument(
+        "--save-playlist",
+        metavar="NAME",
+        default="",
+        help="Save a YouTube playlist/radio URL as PlayList/NAME.m3u and exit.",
+    )
+    parser.add_argument(
+        "--playlist-dir",
+        default=None,
+        help="Directory for --save-playlist output. Defaults to ./PlayList.",
+    )
+    parser.add_argument(
         "--no-update",
         action="store_true",
         help="Skip foreground yt-dlp update checks.",
@@ -461,11 +693,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     root = script_root()
     config_dir = default_config_dir(root)
-    endpoint = ipc_endpoint(args.ipc_name)
-    mpv_path = find_mpv(root, args.mpv_path)
     yt_dlp = find_yt_dlp(config_dir)
     launch_args = list(args.mpv_args)
     youtube_url = first_youtube_url(launch_args)
+
+    if args.save_playlist:
+        return save_youtube_playlist(
+            name=args.save_playlist,
+            playlist_dir=args.playlist_dir,
+            launch_args=launch_args,
+            root=root,
+            yt_dlp=yt_dlp,
+            playlist_limit=args.playlist_limit,
+            dry_run=args.dry_run,
+        )
+
+    endpoint = ipc_endpoint(args.ipc_name)
+    mpv_path = find_mpv(root, args.mpv_path)
 
     if youtube_url and args.wait and not args.no_update:
         update_yt_dlp(yt_dlp)

@@ -7,6 +7,10 @@ param(
 
     [int]$PlaylistLimit = 0,
 
+    [string]$SavePlaylist = "",
+
+    [string]$PlaylistDir = "",
+
     [switch]$NoUpdate,
 
     [switch]$DryRun,
@@ -50,6 +54,27 @@ $PythonCommand = if ($Python.CommandType -eq "Application") {
     $Python.Name
 }
 
+if (-not $SavePlaylist -and $RemainingArgs.Count -ge 2) {
+    $FirstArg = $RemainingArgs[0]
+    $HasPlaylistUrl = $false
+
+    foreach ($Item in $RemainingArgs[1..($RemainingArgs.Count - 1)]) {
+        if ($Item -match '^https?://.*(?:[?&]list=|youtube\.com/(?:playlist|.*[?&]list=)|music\.youtube\.com/(?:playlist|.*[?&]list=))') {
+            $HasPlaylistUrl = $true
+            break
+        }
+    }
+
+    if (
+        $HasPlaylistUrl -and
+        $FirstArg -notmatch '^https?://' -and
+        -not (Test-Path -LiteralPath $FirstArg)
+    ) {
+        $SavePlaylist = $FirstArg
+        $RemainingArgs = @($RemainingArgs | Select-Object -Skip 1)
+    }
+}
+
 $LauncherArgs = @(
     $PythonLauncher,
     "--height", $Height,
@@ -59,6 +84,12 @@ $LauncherArgs = @(
 
 if ($CookiesFromBrowser) {
     $LauncherArgs += @("--cookies-from-browser", $CookiesFromBrowser)
+}
+if ($SavePlaylist) {
+    $LauncherArgs += @("--save-playlist", $SavePlaylist)
+}
+if ($PlaylistDir) {
+    $LauncherArgs += @("--playlist-dir", $PlaylistDir)
 }
 if ($NoUpdate) {
     $LauncherArgs += "--no-update"

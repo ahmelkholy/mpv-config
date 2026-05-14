@@ -21,7 +21,11 @@ This launcher is Python-based for cross-platform use:
 mpv https://youtu.be/example
 python .\mpv-youtube.py https://youtu.be/example
 python .\mpv-youtube.py --playlist-limit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
+python .\mpv-youtube.py --save-playlist "Halak Radio" --playlist-limit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
+.\mpv-youtube.ps1 "Halak Radio" -PlaylistLimit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
 ```
+
+`--save-playlist` creates `PlayList\Halak Radio.m3u` and exits. It only saves YouTube playlist/radio URLs; single video links are not written as playlist files.
 
 On Linux or macOS, use:
 
