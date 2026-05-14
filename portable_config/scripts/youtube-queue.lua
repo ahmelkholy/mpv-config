@@ -5,11 +5,15 @@ local o = {
     queue_file = "youtube-queue.m3u",
     restore_on_start = true,
     save_all_urls = false,
+    expand_playlists = true,
+    playlist_limit = 0,
+    ytdlp_path = "",
 }
 
 require("mp.options").read_options(o, "youtube-queue")
 
 local cache_dir = mp.command_native({"expand-path", "~~/cache"})
+local config_ytdlp_path = mp.command_native({"expand-path", "~~/yt-dlp.exe"})
 local queue_path = utils.join_path(cache_dir, o.queue_file)
 local save_timer = nil
 local restoring = false
@@ -37,6 +41,14 @@ local function is_youtube_url(value)
     )
 end
 
+local function is_youtube_playlist_url(value)
+    return is_youtube_url(value) and (
+        value:match("[?&]list=") or
+        value:match("://[^/]*youtube%.com/playlist%?") or
+        value:match("://[^/]*music%.youtube%.com/playlist%?")
+    )
+end
+
 local function should_persist(value)
     if o.save_all_urls then
         return is_url(value)
@@ -57,6 +69,30 @@ local function executable_exists(name)
         or {"sh", "-c", "command -v " .. name .. " >/dev/null 2>&1"}
     local result = utils.subprocess({args = args, cancellable = false})
     return result and result.status == 0
+end
+
+local function find_executable(name)
+    local args = is_windows()
+        and {"cmd.exe", "/d", "/c", "where.exe " .. name .. " 2>nul"}
+        or {"sh", "-c", "command -v " .. name .. " 2>/dev/null"}
+    local result = utils.subprocess({args = args, cancellable = false})
+    if not result or result.status ~= 0 then return nil end
+
+    local path = (result.stdout or ""):match("([^\r\n]+)")
+    if path and utils.file_info(path) then return path end
+    return nil
+end
+
+local function find_ytdlp()
+    if o.ytdlp_path ~= "" and utils.file_info(o.ytdlp_path) then
+        return o.ytdlp_path
+    end
+
+    if utils.file_info(config_ytdlp_path) then
+        return config_ytdlp_path
+    end
+
+    return find_executable("yt-dlp") or find_executable("yt-dlp.exe")
 end
 
 local function clipboard_command()
@@ -249,6 +285,87 @@ local function extract_first_url(text)
     return nil
 end
 
+local function playlist_limit_args()
+    local limit = tonumber(o.playlist_limit) or 0
+    if limit <= 0 then
+        return {}
+    end
+
+    return {"--playlist-end", tostring(math.floor(limit))}
+end
+
+local function parse_playlist_urls(stdout)
+    local entries = {}
+    local seen = {}
+
+    for line in tostring(stdout or ""):gmatch("[^\r\n]+") do
+        local value = trim(line)
+        if should_persist(value) and not seen[value] then
+            entries[#entries + 1] = value
+            seen[value] = true
+        end
+    end
+
+    return entries
+end
+
+local function append_urls(urls)
+    local added = 0
+
+    for _, url in ipairs(urls) do
+        if should_persist(url) then
+            mp.commandv("loadfile", url, "append-play")
+            added = added + 1
+        end
+    end
+
+    if added > 0 then
+        schedule_save()
+    end
+
+    return added
+end
+
+local function expand_playlist_url(url, callback)
+    local ytdlp = find_ytdlp()
+    if not ytdlp then
+        callback(nil, "yt-dlp not found")
+        return
+    end
+
+    local args = {
+        ytdlp,
+        "--flat-playlist",
+        "--yes-playlist",
+        "--ignore-errors",
+        "--no-warnings",
+        "--print",
+        "%(webpage_url)s",
+    }
+
+    for _, value in ipairs(playlist_limit_args()) do
+        args[#args + 1] = value
+    end
+
+    args[#args + 1] = url
+
+    mp.command_native_async({
+        name = "subprocess",
+        playback_only = false,
+        capture_stdout = true,
+        capture_stderr = true,
+        args = args,
+    }, function(success, result)
+        if not success or not result or result.status ~= 0 then
+            local detail = result and trim(result.stderr or "") or "unknown error"
+            callback(nil, detail ~= "" and detail or "yt-dlp failed")
+            return
+        end
+
+        callback(parse_playlist_urls(result.stdout), nil)
+    end)
+end
+
 local function queue_url(url, show_osd)
     if not should_persist(url) then
         if show_osd then
@@ -257,8 +374,29 @@ local function queue_url(url, show_osd)
         return
     end
 
-    mp.commandv("loadfile", url, "append-play")
-    schedule_save()
+    if o.expand_playlists and is_youtube_playlist_url(url) then
+        if show_osd then
+            mp.osd_message("Reading YouTube playlist...", 2)
+        end
+
+        expand_playlist_url(url, function(entries, error)
+            if entries and #entries > 0 then
+                local added = append_urls(entries)
+                if show_osd then
+                    mp.osd_message(("Added %d YouTube playlist item(s)"):format(added), 3)
+                end
+                return
+            end
+
+            append_urls({url})
+            if show_osd then
+                mp.osd_message(("Added URL without playlist expansion: %s"):format(error or "no entries"), 4)
+            end
+        end)
+        return
+    end
+
+    append_urls({url})
 
     if show_osd then
         mp.osd_message("Added YouTube URL to queue", 2)

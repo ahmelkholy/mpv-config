@@ -739,18 +739,30 @@ function open_stream_quality_menu()
 		return
 	end
 
+	local function format_for_height(height)
+		return 'bv*[height<=' .. height .. ']+ba/b[height<=' .. height .. ']/bv*+ba/b'
+	end
+
+	local function height_from_format(format)
+		if type(format) ~= 'string' then return nil end
+		return tonumber(format:match('height%s*<=%??%s*(%d+)'))
+	end
+
 	local ytdl_format = mp.get_property_native('ytdl-format')
+	local current_height = height_from_format(ytdl_format)
 	local items = {}
 	---@type Menu
 	local menu
 
 	for _, height in ipairs(config.stream_quality_options) do
-		local format = 'bestvideo[height<=?' .. height .. ']+bestaudio/best[height<=?' .. height .. ']'
-		items[#items + 1] = {title = height .. 'p', value = format, active = format == ytdl_format}
+		local format = format_for_height(height)
+		items[#items + 1] = {title = height .. 'p', value = format, active = tonumber(height) == current_height}
 	end
 
 	menu = Menu:open({type = 'stream-quality', title = t('Stream quality'), items = items}, function(event)
 		if event.type == 'activate' then
+			local height = height_from_format(event.value)
+			if height then mp.commandv('script-message', 'remember-quality', tostring(height)) end
 			mp.set_property('ytdl-format', event.value)
 
 			-- Reload the video to apply new format

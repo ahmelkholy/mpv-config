@@ -11,7 +11,7 @@ Before installing, please take your time to read this whole README as common iss
 
 ## YouTube Queue Workflow
 
-Use `mpv <youtube-url>` from PowerShell as usual. The command now goes through `mpv-youtube.py`, starts `mpv.exe` detached, and returns the terminal immediately. If mpv is already open, another `mpv <youtube-url>` appends the video to the running playlist instead of starting a new player. You can also copy a YouTube URL and press `Ctrl+V` inside mpv to append it from the clipboard.
+Use `mpv <youtube-url>` from PowerShell as usual. The command now goes through `mpv-youtube.py`, starts `mpv.exe` detached, and returns the terminal immediately. If mpv is already open, another `mpv <youtube-url>` appends the video to the running playlist instead of starting a new player. You can also copy a YouTube URL and press `Ctrl+V` inside mpv to append it from the clipboard. YouTube playlist and radio links are expanded with `yt-dlp`, so a link like `watch?v=...&list=...&start_radio=1` is queued as individual videos and advances one by one.
 
 The remaining YouTube queue is saved to `portable_config/cache/youtube-queue.m3u`. If mpv is closed accidentally, run `mpv` or `mpv <youtube-url>` again and the saved queue is restored. Watched videos are removed from that queue after normal playback reaches the end, and the queue file is deleted when nothing is left.
 
@@ -20,6 +20,7 @@ This launcher is Python-based for cross-platform use:
 ```powershell
 mpv https://youtu.be/example
 python .\mpv-youtube.py https://youtu.be/example
+python .\mpv-youtube.py --playlist-limit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
 ```
 
 On Linux or macOS, use:

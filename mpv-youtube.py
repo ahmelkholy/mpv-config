@@ -15,6 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Iterable, Sequence
+from urllib.parse import parse_qs, urlparse
 
 
 HEIGHTS = (720, 1080, 1440, 2160, 4320)
@@ -38,6 +39,16 @@ def is_url(value: str) -> bool:
 def is_youtube_url(value: str) -> bool:
     """Return True if a value looks like a YouTube URL."""
     return is_url(value) and any(marker in value for marker in YOUTUBE_HOST_MARKERS)
+
+
+def is_youtube_playlist_url(value: str) -> bool:
+    """Return True if a YouTube URL points at a playlist or radio mix."""
+    if not is_youtube_url(value):
+        return False
+
+    parsed = urlparse(value)
+    query = parse_qs(parsed.query)
+    return bool(query.get("list")) or parsed.path.rstrip("/").endswith("/playlist")
 
 
 def is_media_argument(value: str) -> bool:
@@ -214,6 +225,97 @@ def ytdl_raw_options(cookies_from_browser: str) -> list[str]:
     return raw_options
 
 
+def playlist_end_args(limit: int) -> list[str]:
+    """Return yt-dlp arguments for an optional playlist item limit."""
+    if limit <= 0:
+        return []
+
+    return ["--playlist-end", str(limit)]
+
+
+def expand_youtube_playlist(
+    url: str,
+    yt_dlp: str | None,
+    playlist_limit: int,
+) -> list[str]:
+    """Return individual video URLs for a YouTube playlist/radio URL."""
+    if not yt_dlp or not is_youtube_playlist_url(url):
+        return [url]
+
+    command = [
+        yt_dlp,
+        "--flat-playlist",
+        "--yes-playlist",
+        "--ignore-errors",
+        "--no-warnings",
+        "--print",
+        "%(webpage_url)s",
+        *playlist_end_args(playlist_limit),
+        url,
+    ]
+
+    try:
+        result = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError as error:
+        print(f"Warning: could not expand playlist URL: {error}", file=sys.stderr)
+        return [url]
+
+    if result.returncode != 0:
+        detail = (result.stderr or "").strip()
+        if detail:
+            print(f"Warning: could not expand playlist URL: {detail}", file=sys.stderr)
+        return [url]
+
+    entries: list[str] = []
+    seen: set[str] = set()
+    for line in result.stdout.splitlines():
+        entry = line.strip()
+        if is_youtube_url(entry) and entry not in seen:
+            entries.append(entry)
+            seen.add(entry)
+
+    return entries or [url]
+
+
+def expand_media_items(
+    media: Sequence[str],
+    yt_dlp: str | None,
+    playlist_limit: int,
+) -> list[str]:
+    """Expand playlist/radio media arguments into playable video URLs."""
+    expanded: list[str] = []
+    for item in media:
+        if is_youtube_playlist_url(item):
+            expanded.extend(expand_youtube_playlist(item, yt_dlp, playlist_limit))
+        else:
+            expanded.append(item)
+
+    return expanded
+
+
+def expand_launch_args(
+    launch_args: Sequence[str],
+    yt_dlp: str | None,
+    playlist_limit: int,
+) -> list[str]:
+    """Expand media URLs while preserving non-media mpv arguments in place."""
+    expanded: list[str] = []
+    for item in launch_args:
+        if is_media_argument(item):
+            expanded.extend(expand_media_items([item], yt_dlp, playlist_limit))
+        else:
+            expanded.append(item)
+
+    return expanded
+
+
 def build_mpv_args(
     config_dir: Path,
     endpoint: str,
@@ -316,6 +418,12 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Pass yt-dlp cookies-from-browser, for example firefox.",
     )
     parser.add_argument(
+        "--playlist-limit",
+        type=int,
+        default=0,
+        help="Maximum YouTube playlist/radio items to add; 0 means all available.",
+    )
+    parser.add_argument(
         "--no-update",
         action="store_true",
         help="Skip foreground yt-dlp update checks.",
@@ -359,13 +467,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     launch_args = list(args.mpv_args)
     youtube_url = first_youtube_url(launch_args)
 
-    media_args = [value for value in launch_args if is_media_argument(value)]
-    if not args.dry_run and not args.wait:
-        if send_media_to_running_mpv(endpoint, media_args):
-            print("Added to the running mpv queue.")
-            return 0
-        remove_stale_unix_socket(endpoint)
-
     if youtube_url and args.wait and not args.no_update:
         update_yt_dlp(yt_dlp)
 
@@ -374,6 +475,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             "Warning: yt-dlp was not found. Install yt-dlp for YouTube URLs.",
             file=sys.stderr,
         )
+
+    if not args.dry_run:
+        launch_args = expand_launch_args(launch_args, yt_dlp, args.playlist_limit)
+
+    if not args.dry_run and not args.wait:
+        media_args = [value for value in launch_args if is_media_argument(value)]
+        if send_media_to_running_mpv(endpoint, media_args):
+            print("Added to the running mpv queue.")
+            return 0
+        remove_stale_unix_socket(endpoint)
 
     mpv_args = build_mpv_args(
         config_dir=config_dir,

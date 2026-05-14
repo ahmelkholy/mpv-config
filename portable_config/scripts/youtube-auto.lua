@@ -20,6 +20,9 @@ local retried = {}
 local current_url = nil
 local update_running = false
 local js_runtime = nil
+local selected_height = nil
+local next_load_height = nil
+local internally_set_ytdl_format = nil
 
 local function is_windows()
     return package.config:sub(1, 1) == "\\"
@@ -51,6 +54,19 @@ end
 local function format_for_height(height)
     height = tonumber(height) or o.max_height
     return ("bv*[height<=%d]+ba/b[height<=%d]/bv*+ba/b"):format(height, height)
+end
+
+local function normalize_height(height)
+    height = tonumber(height)
+    if not height or height < 1 then return nil end
+    return math.floor(height)
+end
+
+local function height_from_format(format)
+    if type(format) ~= "string" then return nil end
+
+    local height = format:match("height%s*<=%??%s*(%d+)")
+    return normalize_height(height)
 end
 
 local function write_last_check()
@@ -160,6 +176,7 @@ local function update_ytdlp(show_osd)
 end
 
 local function apply_network_defaults(height)
+    height = normalize_height(height) or o.max_height
     local raw_options = mp.get_property_native("ytdl-raw-options") or {}
     local runtime = find_js_runtime()
 
@@ -178,7 +195,8 @@ local function apply_network_defaults(height)
     mp.set_property_native("ytdl-raw-options", raw_options)
 
     mp.set_property("ytdl", "yes")
-    mp.set_property("ytdl-format", format_for_height(height))
+    internally_set_ytdl_format = format_for_height(height)
+    mp.set_property("ytdl-format", internally_set_ytdl_format)
     mp.set_property("cache", "yes")
     mp.set_property("cache-on-disk", "no")
     mp.set_property("demuxer-seekable-cache", "yes")
@@ -195,12 +213,69 @@ local function repair_dirs()
     mkdir(mp.command_native({"expand-path", "~~/subtitles"}))
 end
 
+local function reload_current_url()
+    if not current_url then return false end
+
+    local duration = mp.get_property_native("duration")
+    local time_pos = mp.get_property("time-pos")
+
+    mp.command("playlist-play-index current")
+
+    if duration and duration > 0 and time_pos then
+        local function seeker()
+            mp.commandv("seek", time_pos, "absolute")
+            mp.unregister_event(seeker)
+        end
+        mp.register_event("file-loaded", seeker)
+    end
+
+    return true
+end
+
+local function remember_quality(height, show_osd)
+    height = normalize_height(height)
+    if not height then
+        if show_osd then mp.osd_message("Invalid YouTube quality", 3) end
+        return false
+    end
+
+    selected_height = height
+    apply_network_defaults(selected_height)
+
+    if show_osd then
+        mp.osd_message(("YouTube quality: %dp"):format(selected_height), 2)
+    end
+
+    return true
+end
+
+mp.observe_property("ytdl-format", "string", function(_, value)
+    if not current_url or not value or value == internally_set_ytdl_format then
+        return
+    end
+
+    local height = height_from_format(value)
+    if height then
+        selected_height = height
+        msg.info(("Remembered manual YouTube quality: %dp"):format(height))
+    end
+end)
+
 mp.add_hook("on_load", 5, function()
     local path = mp.get_property("stream-open-filename", mp.get_property("path", ""))
-    current_url = is_url(path) and path or nil
+    local url = is_url(path) and path or nil
+    local is_reloading_current_url = current_url and url == current_url
+    current_url = url
 
     if current_url then
-        apply_network_defaults(o.max_height)
+        local height = next_load_height or selected_height
+        if not height and is_reloading_current_url then
+            height = height_from_format(mp.get_property("ytdl-format", ""))
+            selected_height = height or selected_height
+        end
+        next_load_height = nil
+
+        apply_network_defaults(height or o.max_height)
         if is_youtube_url(current_url) and not find_ytdlp() then
             mp.osd_message("yt-dlp missing. Run mpv-update.bat.", 5)
         end
@@ -226,9 +301,10 @@ mp.register_event("end-file", function(event)
 
     if not retried[current_url] then
         retried[current_url] = true
-        apply_network_defaults(o.fallback_height)
+        next_load_height = normalize_height(o.fallback_height) or o.max_height
+        apply_network_defaults(next_load_height)
         update_ytdlp(false)
-        mp.osd_message("YouTube failed. Retrying at 1080p and checking yt-dlp...", 5)
+        mp.osd_message(("YouTube failed. Retrying at %dp and checking yt-dlp..."):format(next_load_height), 5)
         mp.add_timeout(1, function() mp.commandv("loadfile", current_url, "replace") end)
     else
         mp.osd_message("YouTube still failed. Run mpv-update.bat, then reopen the URL.", 6)
@@ -237,3 +313,11 @@ end)
 
 mp.add_key_binding("F9", "update-ytdlp", function() update_ytdlp(true) end)
 mp.register_script_message("update-ytdlp", function() update_ytdlp(true) end)
+mp.register_script_message("remember-quality", function(height)
+    remember_quality(height, false)
+end)
+mp.register_script_message("set-quality", function(height)
+    if remember_quality(height, true) then
+        reload_current_url()
+    end
+end)

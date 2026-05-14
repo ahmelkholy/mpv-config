@@ -1,9 +1,11 @@
-[CmdletBinding()]
+[CmdletBinding(PositionalBinding = $false)]
 param(
     [ValidateSet(720, 1080, 1440, 2160, 4320)]
     [int]$Height = 2160,
 
     [string]$CookiesFromBrowser = "",
+
+    [int]$PlaylistLimit = 0,
 
     [switch]$NoUpdate,
 
@@ -51,6 +53,7 @@ $PythonCommand = if ($Python.CommandType -eq "Application") {
 $LauncherArgs = @(
     $PythonLauncher,
     "--height", $Height,
+    "--playlist-limit", $PlaylistLimit,
     "--ipc-name", $IpcName
 )
 
