@@ -23,10 +23,12 @@ python .\mpv-youtube.py https://youtu.be/example
 python .\mpv-youtube.py --playlist-limit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
 python .\mpv-youtube.py --save-playlist "Halak Radio" --playlist-limit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
 .\mpv-youtube.ps1 "Halak Radio" -PlaylistLimit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
+.\mpv-youtube.ps1 "Private Playlist" -PlaylistLimit 50 "https://www.youtube.com/watch?v=example&list=PLexample"
 mpv clear
 ```
 
 `--save-playlist` creates `PlayList\Halak Radio.m3u` and exits. It only saves YouTube playlist/radio URLs; single video links are not written as playlist files.
+For private or account-scoped playlists, the launcher automatically uses the first usable Netscape-format cookie export it finds. The preferred path is `C:\Users\ahm_e\Downloads\youtube.com_cookies.txt`; local ignored files such as `cookies.txt` are fallbacks. If playlist access fails, export fresh YouTube cookies from the signed-in browser/account and replace the cookie file. Use `-Cookies <path>` to override detection, or `-NoCookies` to disable it.
 `mpv clear` removes mpv's remembered YouTube/session buffer (`cache\youtube-queue.m3u` and `cache\watch_later\*`) and asks the running mpv instance to drop its loaded playlist. It does not delete playlists saved under `PlayList\`. Existing mpv windows opened before this config gained an IPC pipe must be closed once before PowerShell can control their live playlist.
 
 On Linux or macOS, use:

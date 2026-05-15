@@ -17,8 +17,8 @@ import urllib.error
 import urllib.request
 import zipfile
 from pathlib import Path
-from typing import Iterable, Sequence
-from urllib.parse import parse_qs, urlparse
+from typing import Iterable, Mapping, Sequence
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from xml.etree import ElementTree
 
 
@@ -36,7 +36,9 @@ SCRIPT_UPDATES = (
     ("mpv-player/mpv", "TOOLS/lua/autodeint.lua", "scripts/autodeint.lua"),
 )
 PS_OPTION_ALIASES = {
+    "cookies": "--cookies",
     "cookiesfrombrowser": "--cookies-from-browser",
+    "nocookies": "--no-cookies",
     "clearyoutubequeue": "--clear-youtube-queue",
     "clearqueue": "--clear-youtube-queue",
     "dryrun": "--dry-run",
@@ -86,6 +88,86 @@ def is_youtube_playlist_url(value: str) -> bool:
     parsed = urlparse(value)
     query = parse_qs(parsed.query)
     return bool(query.get("list")) or parsed.path.rstrip("/").endswith("/playlist")
+
+
+def first_query_value(url: str, key: str) -> str | None:
+    """Return the first query-string value for a URL key."""
+    values = parse_qs(urlparse(url).query).get(key)
+    if not values:
+        return None
+
+    return values[0] or None
+
+
+def youtube_video_id(url: str) -> str | None:
+    """Return the YouTube video id from common video URL shapes."""
+    if not is_youtube_url(url):
+        return None
+
+    parsed = urlparse(url)
+    host = parsed.netloc.lower()
+    path = parsed.path.strip("/")
+    if "youtu.be" in host:
+        return path.split("/", 1)[0] or None
+
+    if path == "watch":
+        return first_query_value(url, "v")
+
+    for prefix in ("shorts/", "embed/", "live/"):
+        if path.startswith(prefix):
+            return path.removeprefix(prefix).split("/", 1)[0] or None
+
+    return None
+
+
+def youtube_playlist_id(url: str) -> str | None:
+    """Return the YouTube playlist id from a playlist/radio URL."""
+    if not is_youtube_url(url):
+        return None
+
+    return first_query_value(url, "list")
+
+
+def canonical_youtube_playlist_url(url: str) -> str | None:
+    """Return a canonical /playlist URL for links containing a list id."""
+    playlist_id = youtube_playlist_id(url)
+    if not playlist_id:
+        return None
+
+    parsed = urlparse(url)
+    host = (
+        "music.youtube.com"
+        if "music.youtube.com" in parsed.netloc.lower()
+        else "www.youtube.com"
+    )
+    return urlunparse(
+        (
+            parsed.scheme or "https",
+            host,
+            "/playlist",
+            "",
+            urlencode({"list": playlist_id}),
+            "",
+        )
+    )
+
+
+def youtube_playlist_expansion_urls(url: str) -> list[str]:
+    """Return yt-dlp URL candidates that should expose playlist entries."""
+    candidates: list[str] = []
+    canonical = canonical_youtube_playlist_url(url)
+    if canonical:
+        candidates.append(canonical)
+    candidates.append(url)
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate not in seen:
+            unique.append(candidate)
+            seen.add(candidate)
+
+    return unique
 
 
 def is_media_argument(value: str) -> bool:
@@ -442,7 +524,74 @@ def format_for_height(height: int) -> str:
     return f"bv*[height<={height}]+ba/b[height<={height}]/bv*+ba/b"
 
 
-def ytdl_raw_options(cookies_from_browser: str) -> list[str]:
+def normalize_cli_path(value: str) -> str:
+    """Return an absolute-ish path for forwarding to child processes."""
+    path = Path(value).expanduser()
+    return str(path.resolve(strict=False))
+
+
+def usable_cookie_file(path: Path) -> bool:
+    """Return True when a cookie file exists and has content."""
+    try:
+        return path.is_file() and path.stat().st_size > 0
+    except OSError:
+        return False
+
+
+def default_cookie_candidates(root: Path) -> list[Path]:
+    """Return cookie files to try when --cookies was not provided."""
+    downloads = Path.home() / "Downloads"
+    config_dir = default_config_dir(root)
+    values = [
+        os.environ.get("MPV_YOUTUBE_COOKIES", ""),
+        downloads / "youtube.com_cookies.txt",
+        downloads / "cookies.txt",
+        root / "cookies.txt",
+        root / "youtube.com_cookies.txt",
+        config_dir / "cookies.txt",
+        config_dir / "youtube.com_cookies.txt",
+    ]
+
+    candidates: list[Path] = []
+    seen: set[str] = set()
+    for value in values:
+        if not value:
+            continue
+        path = Path(value).expanduser()
+        key = str(path.resolve(strict=False)).lower()
+        if key not in seen:
+            candidates.append(path)
+            seen.add(key)
+
+    return candidates
+
+
+def find_default_cookies_file(root: Path) -> str:
+    """Return the first usable automatic cookies.txt path."""
+    for candidate in default_cookie_candidates(root):
+        if usable_cookie_file(candidate):
+            return normalize_cli_path(str(candidate))
+
+    return ""
+
+
+def yt_dlp_temp_dir() -> Path:
+    """Return the local temp base used by PyInstaller yt-dlp builds."""
+    return default_config_dir(script_root()) / "cache" / "yt-dlp-temp"
+
+
+def yt_dlp_process_env() -> dict[str, str]:
+    """Return an environment that keeps yt-dlp temp files local."""
+    env = os.environ.copy()
+    temp_dir = yt_dlp_temp_dir()
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    env["TEMP"] = str(temp_dir)
+    env["TMP"] = str(temp_dir)
+    env["TMPDIR"] = str(temp_dir)
+    return env
+
+
+def ytdl_raw_options(cookies_from_browser: str, cookies_file: str) -> list[str]:
     """Build mpv ytdl raw option arguments."""
     raw_options: list[str] = []
 
@@ -469,7 +618,16 @@ def ytdl_raw_options(cookies_from_browser: str) -> list[str]:
             f"cookies-from-browser={cookies_from_browser}"
         )
 
+    if cookies_file:
+        cookies_path = normalize_cli_path(cookies_file).replace(os.sep, "/")
+        raw_options.append("--ytdl-raw-options-append=" f"cookies={cookies_path}")
+
     return raw_options
+
+
+def is_dpapi_cookie_error(detail: str) -> bool:
+    """Return True when yt-dlp hit Chromium/Edge DPAPI cookie decryption."""
+    return "Failed to decrypt with DPAPI" in detail
 
 
 def playlist_end_args(limit: int) -> list[str]:
@@ -484,63 +642,105 @@ def expand_youtube_playlist(
     url: str,
     yt_dlp: str | None,
     playlist_limit: int,
+    cookies_from_browser: str = "",
+    cookies_file: str = "",
 ) -> list[str]:
     """Return individual video URLs for a YouTube playlist/radio URL."""
     if not yt_dlp or not is_youtube_playlist_url(url):
         return [url]
 
-    command = [
-        yt_dlp,
-        "--flat-playlist",
-        "--yes-playlist",
-        "--ignore-errors",
-        "--no-warnings",
-        "--print",
-        "%(webpage_url)s",
-        *playlist_end_args(playlist_limit),
-        url,
-    ]
+    failures: list[str] = []
+    original_video_id = youtube_video_id(url)
+    for expansion_url in youtube_playlist_expansion_urls(url):
+        command = [
+            yt_dlp,
+            "--flat-playlist",
+            "--yes-playlist",
+            "--ignore-errors",
+            "--no-warnings",
+            "--print",
+            "%(webpage_url)s",
+            *playlist_end_args(playlist_limit),
+        ]
+        if cookies_from_browser:
+            command.extend(["--cookies-from-browser", cookies_from_browser])
+        if cookies_file:
+            command.extend(["--cookies", normalize_cli_path(cookies_file)])
+        command.append(expansion_url)
 
-    try:
-        result = subprocess.run(
-            command,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+        try:
+            result = subprocess.run(
+                command,
+                check=False,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=yt_dlp_process_env(),
+            )
+        except OSError as error:
+            failures.append(str(error))
+            continue
+
+        if result.returncode != 0:
+            detail = (result.stderr or "").strip()
+            if is_dpapi_cookie_error(detail):
+                failures.append(
+                    "Chromium/Edge cookie decryption failed with DPAPI"
+                )
+                break
+            failures.append(detail or f"yt-dlp exited with {result.returncode}")
+            continue
+
+        entries: list[str] = []
+        seen: set[str] = set()
+        for line in result.stdout.splitlines():
+            entry = line.strip()
+            if is_youtube_url(entry) and entry not in seen:
+                entries.append(entry)
+                seen.add(entry)
+
+        if (
+            expansion_url == url
+            and len(entries) == 1
+            and original_video_id
+            and youtube_video_id(entries[0]) == original_video_id
+        ):
+            failures.append("yt-dlp returned only the current video")
+            continue
+
+        if entries:
+            return entries
+
+    if failures:
+        print(
+            "Warning: could not expand playlist URL: " + "; ".join(failures),
+            file=sys.stderr,
         )
-    except OSError as error:
-        print(f"Warning: could not expand playlist URL: {error}", file=sys.stderr)
-        return [url]
 
-    if result.returncode != 0:
-        detail = (result.stderr or "").strip()
-        if detail:
-            print(f"Warning: could not expand playlist URL: {detail}", file=sys.stderr)
-        return [url]
-
-    entries: list[str] = []
-    seen: set[str] = set()
-    for line in result.stdout.splitlines():
-        entry = line.strip()
-        if is_youtube_url(entry) and entry not in seen:
-            entries.append(entry)
-            seen.add(entry)
-
-    return entries or [url]
+    return [url]
 
 
 def expand_media_items(
     media: Sequence[str],
     yt_dlp: str | None,
     playlist_limit: int,
+    cookies_from_browser: str = "",
+    cookies_file: str = "",
 ) -> list[str]:
     """Expand playlist/radio media arguments into playable video URLs."""
     expanded: list[str] = []
     for item in media:
         if is_youtube_playlist_url(item):
-            expanded.extend(expand_youtube_playlist(item, yt_dlp, playlist_limit))
+            expanded.extend(
+                expand_youtube_playlist(
+                    item,
+                    yt_dlp,
+                    playlist_limit,
+                    cookies_from_browser,
+                    cookies_file,
+                )
+            )
         else:
             expanded.append(item)
 
@@ -551,12 +751,22 @@ def expand_launch_args(
     launch_args: Sequence[str],
     yt_dlp: str | None,
     playlist_limit: int,
+    cookies_from_browser: str = "",
+    cookies_file: str = "",
 ) -> list[str]:
     """Expand media URLs while preserving non-media mpv arguments in place."""
     expanded: list[str] = []
     for item in launch_args:
         if is_media_argument(item):
-            expanded.extend(expand_media_items([item], yt_dlp, playlist_limit))
+            expanded.extend(
+                expand_media_items(
+                    [item],
+                    yt_dlp,
+                    playlist_limit,
+                    cookies_from_browser,
+                    cookies_file,
+                )
+            )
         else:
             expanded.append(item)
 
@@ -600,6 +810,8 @@ def save_youtube_playlist(
     root: Path,
     yt_dlp: str | None,
     playlist_limit: int,
+    cookies_from_browser: str,
+    cookies_file: str,
     dry_run: bool,
 ) -> int:
     """Save a YouTube playlist/radio URL to PlayList/NAME.m3u."""
@@ -615,9 +827,35 @@ def save_youtube_playlist(
         print("yt-dlp was not found. Cannot save the playlist.", file=sys.stderr)
         return 1
 
-    entries = expand_youtube_playlist(url, yt_dlp, playlist_limit)
+    entries = expand_youtube_playlist(
+        url,
+        yt_dlp,
+        playlist_limit,
+        cookies_from_browser,
+        cookies_file,
+    )
     if not entries or entries == [url]:
         print("Could not expand the YouTube playlist/radio URL.", file=sys.stderr)
+        if not cookies_from_browser and not cookies_file:
+            print(
+                "If the playlist opens in your signed-in browser, retry with "
+                "-CookiesFromBrowser firefox or -Cookies .\\cookies.txt.",
+                file=sys.stderr,
+            )
+        elif cookies_from_browser and not cookies_file:
+            print(
+                "Chromium/Edge cookie decryption can fail on Windows. Export "
+                "cookies to a Netscape cookies.txt file and retry with "
+                "-Cookies .\\cookies.txt.",
+                file=sys.stderr,
+            )
+        elif cookies_file:
+            print(
+                "The cookies file did not grant playlist access. Export fresh "
+                "YouTube cookies from the signed-in browser/account and replace: "
+                f"{cookies_file}",
+                file=sys.stderr,
+            )
         return 1
 
     path = saved_playlist_path(root, playlist_dir, name)
@@ -660,6 +898,7 @@ def build_mpv_args(
     yt_dlp: str | None,
     height: int,
     cookies_from_browser: str,
+    cookies_file: str,
     launch_args: Sequence[str],
 ) -> list[str]:
     """Build the final mpv argument vector."""
@@ -683,7 +922,7 @@ def build_mpv_args(
             f"ytdl_hook-ytdl_path={yt_dlp.replace(os.sep, '/')}"
         )
 
-    args.extend(ytdl_raw_options(cookies_from_browser))
+    args.extend(ytdl_raw_options(cookies_from_browser, cookies_file))
     args.extend(launch_args)
     return args
 
@@ -705,12 +944,13 @@ def start_mpv(
     mpv_path: str,
     mpv_args: Sequence[str],
     wait: bool,
+    env: Mapping[str, str] | None = None,
 ) -> int:
     """Start mpv either attached for debugging or detached for daily use."""
     command = [mpv_path, *mpv_args]
 
     if wait:
-        return subprocess.call(command)
+        return subprocess.call(command, env=env)
 
     kwargs: dict[str, object] = {
         "stdin": subprocess.DEVNULL,
@@ -718,6 +958,8 @@ def start_mpv(
         "stderr": subprocess.DEVNULL,
         "close_fds": True,
     }
+    if env:
+        kwargs["env"] = env
 
     if is_windows():
         kwargs["creationflags"] = (
@@ -735,7 +977,7 @@ def update_yt_dlp(yt_dlp: str | None) -> None:
     if not yt_dlp:
         return
 
-    subprocess.call([yt_dlp, "-U"])
+    subprocess.call([yt_dlp, "-U"], env=yt_dlp_process_env())
 
 
 def repair_config_folders(install_dir: Path) -> None:
@@ -1191,6 +1433,19 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         help="Pass yt-dlp cookies-from-browser, for example firefox.",
     )
     parser.add_argument(
+        "--cookies",
+        default="",
+        help=(
+            "Pass a Netscape cookies.txt file to yt-dlp. If omitted, the "
+            "launcher auto-detects common cookie export paths."
+        ),
+    )
+    parser.add_argument(
+        "--no-cookies",
+        action="store_true",
+        help="Disable automatic cookies.txt detection.",
+    )
+    parser.add_argument(
         "--playlist-limit",
         type=int,
         default=0,
@@ -1282,6 +1537,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     config_dir = default_config_dir(root)
     yt_dlp = find_yt_dlp(config_dir)
     launch_args = list(args.mpv_args)
+    cookies_file = args.cookies
+
+    if cookies_file and not usable_cookie_file(Path(cookies_file).expanduser()):
+        print(
+            f"Cookies file was not found or is empty: {cookies_file}",
+            file=sys.stderr,
+        )
+        print(
+            "Export fresh YouTube cookies in Netscape cookies.txt format and retry.",
+            file=sys.stderr,
+        )
+        return 1
+
+    if not cookies_file and not args.cookies_from_browser and not args.no_cookies:
+        cookies_file = find_default_cookies_file(root)
 
     if args.update:
         try:
@@ -1308,6 +1578,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             root=root,
             yt_dlp=yt_dlp,
             playlist_limit=args.playlist_limit,
+            cookies_from_browser=args.cookies_from_browser,
+            cookies_file=cookies_file,
             dry_run=args.dry_run,
         )
 
@@ -1324,7 +1596,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
     if not args.dry_run:
-        launch_args = expand_launch_args(launch_args, yt_dlp, args.playlist_limit)
+        launch_args = expand_launch_args(
+            launch_args,
+            yt_dlp,
+            args.playlist_limit,
+            args.cookies_from_browser,
+            cookies_file,
+        )
 
     if not args.dry_run and not args.wait:
         media_args = [value for value in launch_args if is_media_argument(value)]
@@ -1339,6 +1617,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         yt_dlp=yt_dlp,
         height=args.height,
         cookies_from_browser=args.cookies_from_browser,
+        cookies_file=cookies_file,
         launch_args=launch_args,
     )
 
@@ -1348,7 +1627,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(item)
         return 0
 
-    return start_mpv(mpv_path, mpv_args, args.wait)
+    return start_mpv(mpv_path, mpv_args, args.wait, yt_dlp_process_env())
 
 
 if __name__ == "__main__":
