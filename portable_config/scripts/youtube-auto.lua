@@ -4,6 +4,13 @@ local utils = require("mp.utils")
 local o = {
     max_height = 2160,
     fallback_height = 1080,
+    audio_only_format = "ba/bestaudio/best",
+    normal_readahead_secs = 8,
+    normal_max_bytes = "128MiB",
+    normal_max_back_bytes = "32MiB",
+    audio_readahead_secs = 3,
+    audio_max_bytes = "32MiB",
+    audio_max_back_bytes = "4MiB",
     auto_update = true,
     update_interval_days = 7,
     cookies_from_browser = "",
@@ -34,8 +41,20 @@ local function file_exists(path)
 end
 
 local function mkdir(path)
-    if path and not utils.file_info(path) then
-        utils.mkdir(path)
+    if not path or utils.file_info(path) then
+        return
+    end
+
+    local function quote_cmd_arg(value)
+        return '"' .. tostring(value):gsub('"', '""') .. '"'
+    end
+
+    local args = is_windows()
+        and {"cmd.exe", "/d", "/c", "mkdir " .. quote_cmd_arg(path)}
+        or {"mkdir", "-p", path}
+    local result = utils.subprocess({args = args, cancellable = false})
+    if result.status ~= 0 then
+        msg.warn("Could not create directory: " .. path)
     end
 end
 
@@ -67,6 +86,15 @@ local function height_from_format(format)
 
     local height = format:match("height%s*<=%??%s*(%d+)")
     return normalize_height(height)
+end
+
+local function adaptive_audio_only()
+    return mp.get_property("user-data/adaptive-resources/audio-only", "no") == "yes"
+end
+
+local function adaptive_audio_format()
+    local format = mp.get_property("user-data/adaptive-resources/audio-format", "")
+    return format ~= "" and format or o.audio_only_format
 end
 
 local function write_last_check()
@@ -194,15 +222,20 @@ local function apply_network_defaults(height)
 
     mp.set_property_native("ytdl-raw-options", raw_options)
 
+    local audio_only = adaptive_audio_only()
+
     mp.set_property("ytdl", "yes")
-    internally_set_ytdl_format = format_for_height(height)
+    internally_set_ytdl_format = audio_only and adaptive_audio_format() or format_for_height(height)
     mp.set_property("ytdl-format", internally_set_ytdl_format)
     mp.set_property("cache", "yes")
     mp.set_property("cache-on-disk", "no")
     mp.set_property("demuxer-seekable-cache", "yes")
-    mp.set_property_number("demuxer-readahead-secs", 20)
-    mp.set_property("demuxer-max-bytes", "512MiB")
-    mp.set_property("demuxer-max-back-bytes", "128MiB")
+    mp.set_property_number(
+        "demuxer-readahead-secs",
+        audio_only and o.audio_readahead_secs or o.normal_readahead_secs
+    )
+    mp.set_property("demuxer-max-bytes", audio_only and o.audio_max_bytes or o.normal_max_bytes)
+    mp.set_property("demuxer-max-back-bytes", audio_only and o.audio_max_back_bytes or o.normal_max_back_bytes)
     mp.set_property_number("network-timeout", 30)
 end
 

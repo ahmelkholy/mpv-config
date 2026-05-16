@@ -15,10 +15,13 @@ Use `mpv <youtube-url>` from PowerShell as usual. The command now goes through `
 
 The remaining YouTube queue is saved to `portable_config/cache/youtube-queue.m3u`. If mpv is closed accidentally, run `mpv` or `mpv <youtube-url>` again and the saved queue is restored. Watched videos are removed from that queue after normal playback reaches the end, and the queue file is deleted when nothing is left.
 
+The default YouTube quality cap is intentionally light at 480p. Press `F6`, `F7`, or `Shift+F7` inside mpv to switch the active YouTube cap to 480p, 1080p, or 2160p. Press `F8` to toggle audio-only resource mode; when playing network video this asks yt-dlp for audio only and reloads at the same timestamp. Minimize the mpv window to enable the same audio-only mode automatically, and restore the window to bring video back.
+
 This launcher is Python-based for cross-platform use:
 
 ```powershell
 mpv https://youtu.be/example
+python .\mpv-youtube.py --audio-only https://youtu.be/example
 python .\mpv-youtube.py https://youtu.be/example
 python .\mpv-youtube.py --playlist-limit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"
 python .\mpv-youtube.py --save-playlist "Halak Radio" --playlist-limit 50 "https://www.youtube.com/watch?v=example&list=RDexample&start_radio=1"

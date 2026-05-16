@@ -22,7 +22,8 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from xml.etree import ElementTree
 
 
-HEIGHTS = (720, 1080, 1440, 2160, 4320)
+HEIGHTS = (144, 240, 360, 480, 720, 1080, 1440, 2160, 4320)
+YTDL_AUDIO_ONLY_FORMAT = "ba/bestaudio/best"
 USER_AGENT = "mpv-portable-updater"
 YOUTUBE_HOST_MARKERS = (
     "youtube.com/",
@@ -36,6 +37,8 @@ SCRIPT_UPDATES = (
     ("mpv-player/mpv", "TOOLS/lua/autodeint.lua", "scripts/autodeint.lua"),
 )
 PS_OPTION_ALIASES = {
+    "audioonly": "--audio-only",
+    "audio-only": "--audio-only",
     "cookies": "--cookies",
     "cookiesfrombrowser": "--cookies-from-browser",
     "nocookies": "--no-cookies",
@@ -897,11 +900,13 @@ def build_mpv_args(
     endpoint: str,
     yt_dlp: str | None,
     height: int,
+    audio_only: bool,
     cookies_from_browser: str,
     cookies_file: str,
     launch_args: Sequence[str],
 ) -> list[str]:
     """Build the final mpv argument vector."""
+    ytdl_format = YTDL_AUDIO_ONLY_FORMAT if audio_only else format_for_height(height)
     args = [
         f"--config-dir={config_dir}",
         f"--input-ipc-server={endpoint}",
@@ -909,12 +914,20 @@ def build_mpv_args(
         "--force-window=yes",
         "--ytdl=yes",
         "--script-opts-append=ytdl_hook-try_ytdl_first=yes",
-        f"--ytdl-format={format_for_height(height)}",
+        f"--ytdl-format={ytdl_format}",
         "--cache=yes",
-        "--demuxer-readahead-secs=20",
-        "--demuxer-max-bytes=512MiB",
-        "--demuxer-max-back-bytes=128MiB",
+        "--demuxer-readahead-secs=8",
+        "--demuxer-max-bytes=128MiB",
+        "--demuxer-max-back-bytes=32MiB",
     ]
+
+    if audio_only:
+        args.extend(
+            [
+                "--vid=no",
+                "--script-opts-append=adaptive-resources-start_audio_only=yes",
+            ]
+        )
 
     if yt_dlp:
         args.append(
@@ -1424,8 +1437,13 @@ def parse_args(argv: Sequence[str]) -> argparse.Namespace:
         "--height",
         type=int,
         choices=HEIGHTS,
-        default=2160,
+        default=480,
         help="Maximum YouTube video height.",
+    )
+    parser.add_argument(
+        "--audio-only",
+        action="store_true",
+        help="Start network playback in audio-only resource mode.",
     )
     parser.add_argument(
         "--cookies-from-browser",
@@ -1616,6 +1634,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         endpoint=endpoint,
         yt_dlp=yt_dlp,
         height=args.height,
+        audio_only=args.audio_only,
         cookies_from_browser=args.cookies_from_browser,
         cookies_file=cookies_file,
         launch_args=launch_args,
