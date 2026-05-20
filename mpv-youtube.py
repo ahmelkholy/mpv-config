@@ -30,6 +30,20 @@ YOUTUBE_HOST_MARKERS = (
     "youtu.be/",
     "music.youtube.com/",
 )
+YOUTUBE_AUTH_COOKIE_NAMES = {
+    "APISID",
+    "HSID",
+    "LOGIN_INFO",
+    "SAPISID",
+    "SID",
+    "SSID",
+    "__Secure-1PAPISID",
+    "__Secure-1PSID",
+    "__Secure-1PSIDCC",
+    "__Secure-3PAPISID",
+    "__Secure-3PSID",
+    "__Secure-3PSIDCC",
+}
 SCRIPT_UPDATES = (
     ("po5/memo", "memo.lua", "scripts/memo.lua"),
     ("po5/evafast", "evafast.lua", "scripts/evafast.lua"),
@@ -131,6 +145,47 @@ def youtube_playlist_id(url: str) -> str | None:
     return first_query_value(url, "list")
 
 
+def is_youtube_radio_url(url: str) -> bool:
+    """Return True when a YouTube playlist URL is a seeded radio/mix URL."""
+    playlist_id = (youtube_playlist_id(url) or "").upper()
+    if not playlist_id:
+        return False
+
+    query = parse_qs(urlparse(url).query)
+    return bool(query.get("start_radio")) or playlist_id.startswith("RD")
+
+
+def is_youtube_personal_mix_url(url: str) -> bool:
+    """Return True for YouTube's account-scoped My Mix playlist."""
+    playlist_id = youtube_playlist_id(url) or ""
+    return playlist_id.upper() == "RDMM"
+
+
+def seeded_youtube_radio_url(url: str) -> str | None:
+    """Return a seed-video radio URL for RDMM links when possible."""
+    if not is_youtube_personal_mix_url(url):
+        return None
+
+    video_id = youtube_video_id(url)
+    if not video_id:
+        return None
+
+    parsed = urlparse(url)
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    query["list"] = [f"RD{video_id}"]
+    query["start_radio"] = ["1"]
+    return urlunparse(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            urlencode(query, doseq=True),
+            parsed.fragment,
+        )
+    )
+
+
 def canonical_youtube_playlist_url(url: str) -> str | None:
     """Return a canonical /playlist URL for links containing a list id."""
     playlist_id = youtube_playlist_id(url)
@@ -157,11 +212,16 @@ def canonical_youtube_playlist_url(url: str) -> str | None:
 
 def youtube_playlist_expansion_urls(url: str) -> list[str]:
     """Return yt-dlp URL candidates that should expose playlist entries."""
-    candidates: list[str] = []
-    canonical = canonical_youtube_playlist_url(url)
-    if canonical:
-        candidates.append(canonical)
-    candidates.append(url)
+    seeded_radio = seeded_youtube_radio_url(url)
+    candidates = [seeded_radio] if seeded_radio else [url]
+
+    # Radio/mix URLs such as list=RDMM are seeded by the watch video and
+    # start_radio flag. Rewriting them to /playlist?list=... drops that context
+    # and can save unrelated recommendations.
+    if not seeded_radio and not is_youtube_radio_url(url):
+        canonical = canonical_youtube_playlist_url(url)
+        if canonical:
+            candidates.append(canonical)
 
     unique: list[str] = []
     seen: set[str] = set()
@@ -541,6 +601,46 @@ def usable_cookie_file(path: Path) -> bool:
         return False
 
 
+def cookie_file_names(path: Path) -> set[str]:
+    """Return cookie names from a Netscape cookies.txt file."""
+    names: set[str] = set()
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return names
+
+    for line in lines:
+        is_comment = line.startswith("#") and not line.startswith("#HttpOnly_")
+        if not line or is_comment:
+            continue
+        columns = line.split("\t")
+        if len(columns) < 7:
+            columns = line.split()
+        if len(columns) >= 7:
+            names.add(columns[5])
+
+    return names
+
+
+def has_youtube_auth_cookies(cookies_file: str) -> bool:
+    """Return True when a cookies.txt file appears to contain YouTube auth."""
+    if not cookies_file:
+        return False
+
+    return bool(
+        cookie_file_names(Path(cookies_file).expanduser())
+        & YOUTUBE_AUTH_COOKIE_NAMES
+    )
+
+
+def has_personal_youtube_access(
+    cookies_from_browser: str,
+    cookies_file: str,
+) -> bool:
+    """Return True when yt-dlp may see account-scoped YouTube data."""
+    return bool(cookies_from_browser) or has_youtube_auth_cookies(cookies_file)
+
+
 def default_cookie_candidates(root: Path) -> list[Path]:
     """Return cookie files to try when --cookies was not provided."""
     downloads = Path.home() / "Downloads"
@@ -650,6 +750,18 @@ def expand_youtube_playlist(
 ) -> list[str]:
     """Return individual video URLs for a YouTube playlist/radio URL."""
     if not yt_dlp or not is_youtube_playlist_url(url):
+        return [url]
+
+    if (
+        is_youtube_personal_mix_url(url)
+        and not seeded_youtube_radio_url(url)
+        and not has_personal_youtube_access(cookies_from_browser, cookies_file)
+    ):
+        print(
+            "Warning: not expanding YouTube My Mix (RDMM) without signed-in "
+            "YouTube cookies; anonymous expansion returns unrelated videos.",
+            file=sys.stderr,
+        )
         return [url]
 
     failures: list[str] = []
@@ -828,6 +940,31 @@ def save_youtube_playlist(
 
     if not yt_dlp:
         print("yt-dlp was not found. Cannot save the playlist.", file=sys.stderr)
+        return 1
+
+    if (
+        is_youtube_personal_mix_url(url)
+        and not seeded_youtube_radio_url(url)
+        and not has_personal_youtube_access(cookies_from_browser, cookies_file)
+    ):
+        print(
+            "This is a YouTube My Mix (RDMM) URL. To save the actual mix from "
+            "your browser, yt-dlp needs signed-in YouTube cookies.",
+            file=sys.stderr,
+        )
+        if cookies_file:
+            print(
+                "The current cookies file has only visitor/consent cookies, "
+                "not YouTube login cookies. Export fresh YouTube cookies from "
+                "the signed-in browser and retry with -Cookies <path>.",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "Export fresh YouTube cookies from the signed-in browser and "
+                "retry with -Cookies <path>.",
+                file=sys.stderr,
+            )
         return 1
 
     entries = expand_youtube_playlist(
